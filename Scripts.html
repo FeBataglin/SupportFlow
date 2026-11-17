@@ -3,11 +3,11 @@
   'use strict';
   const pages = {
     dashboard: {title:'Visão geral',icon:'▦'},
-    knowledge: {title:'Base de conhecimento',icon:'▤',version:'v1.1.0',description:'O conhecimento certo, no momento certo.',features:['Orientações organizadas por tecnologia e cenário','Pesquisa, categorias e publicação de artigos','Passos de teste e evidências esperadas']},
-    diagnostics: {title:'Diagnóstico assistido',icon:'⑂',version:'v1.4.0',description:'Uma investigação estruturada, do sintoma às evidências.',features:['Roteiros com decisões e próximos passos','Registro de testes e resultados','Relatório para complementar o chamado']},
-    logs: {title:'Analisador de logs',icon:'≋',version:'v1.2.0',description:'Transforme ocorrências em caminhos de investigação.',features:['Leitura local de arquivos TXT, LOG e HAR','Classificação, agrupamento e filtros','Padrões conhecidos e referência às linhas originais']},
-    gemini: {title:'Assistente Gemini',icon:'✧',version:'v1.3.0',description:'Inteligência contextualizada para apoiar o atendimento.',features:['Respostas com referências às orientações publicadas','Separação entre evidências e hipóteses','Sugestão de testes e próximos passos']},
-    history: {title:'Histórico',icon:'◷',version:'Versões futuras',description:'Acompanhe o caminho de cada investigação.',features:['Consulta de diagnósticos e metadados de análises','Visibilidade conforme perfil e permissões','Retenção definida pela política corporativa']},
+    knowledge: {title:'Base de conhecimento',icon:'▤',description:'Guias de testes e procedimentos de atendimento.'},
+    diagnostics: {title:'Diagnóstico assistido',icon:'⑂',version:'v1.4.0',description:'Roteiros de testes e coleta de evidências.',features:['Roteiros com decisões e próximos passos','Registro de testes e resultados','Relatório para complementar o chamado']},
+    logs: {title:'Analisador de logs',icon:'≋',version:'v1.2.0',description:'Consulta, classificação e filtros de logs.',features:['Leitura local de arquivos TXT, LOG e HAR','Classificação, agrupamento e filtros','Padrões conhecidos e referência às linhas originais']},
+    gemini: {title:'Assistente Gemini',icon:'✧',version:'v1.3.0',description:'Dúvidas técnicas com consulta à base de conhecimento.',features:['Respostas com referências às orientações publicadas','Separação entre evidências e hipóteses','Sugestão de testes e próximos passos']},
+    history: {title:'Histórico',icon:'◷',version:'Versões futuras',description:'Diagnósticos e análises anteriores.',features:['Consulta de diagnósticos e metadados de análises','Visibilidade conforme perfil e permissões','Retenção definida pela política corporativa']},
     admin: {title:'Administração',icon:'⚙'}
   };
   let state = null, sequence = 0;
@@ -21,7 +21,7 @@
     });
   }
   function heading(label,title,description) {
-    return `<div class="page-heading"><div><p style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">${esc(label)}</p><h1 style="margin:8px 0 9px">${esc(title)}</h1><p style="color:var(--muted);font-size:13px;margin:0">${esc(description)}</p></div></div>`;
+    return `<div class="page-heading"><div><h1>${esc(title)}</h1>${description ? `<p>${esc(description)}</p>` : ''}</div></div>`;
   }
   function empty(title,description) {
     return `<div class="empty"><div class="empty-icon" aria-hidden="true">▤</div><h3>${esc(title)}</h3><p>${esc(description)}</p></div>`;
@@ -29,13 +29,12 @@
   function dashboard() {
     const cards = ['knowledge','diagnostics','logs','gemini'].map(id => {
       const p = pages[id];
-      return `<a href="#${id}" class="panel card" style="text-decoration:none;color:inherit"><div style="font-size:25px;color:var(--cyan);margin-bottom:18px" aria-hidden="true">${p.icon}</div><h3>${p.title}</h3><p>${p.description}</p><span class="card-link">Planejado · ${p.version}<span>↗</span></span></a>`;
+      return `<a href="#${id}" class="panel card" style="text-decoration:none;color:inherit"><div style="font-size:25px;color:var(--cyan);margin-bottom:18px" aria-hidden="true">${p.icon}</div><h3>${p.title}</h3><p>${p.description}</p><span class="card-link">${id === 'knowledge' ? 'Consultar guias' : 'Planejado · '+p.version}<span>↗</span></span></a>`;
     }).join('');
-    const recent = state.recentArticles.length ? `<div class="table-wrap"><table><thead><tr><th>Título</th><th>Categoria</th><th>Atualização</th></tr></thead><tbody>${state.recentArticles.map(a => `<tr><td>${esc(a.title)}</td><td>${esc(a.category)}</td><td>${esc(date(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div>` : empty('Seu conhecimento começa aqui','Nenhuma orientação publicada. O cadastro e a consulta de artigos serão disponibilizados na v1.1.0.');
-    $('content').innerHTML = heading('SEU WORKSPACE DE SUPORTE','Visão geral','Conhecimento, diagnóstico e inteligência em um só fluxo.') +
-      `<section class="hero" style="margin-top:27px"><div><p class="eyebrow" style="font-size:10px;letter-spacing:1.5px">CONECTANDO CADA ETAPA DO ATENDIMENTO</p><h2>Mais clareza para investigar.<br>Mais confiança para orientar.</h2><p>Uma central para apoiar a jornada de suporte às aplicações web Datasul, da primeira análise ao encaminhamento técnico.</p></div><div class="hero-art" aria-hidden="true">⑂</div></section>
-      <section class="stats" style="margin-top:22px"><div class="stat"><span class="stat-label">Orientações publicadas</span><strong>${state.dashboard.publishedArticles}</strong><small>Conteúdo cadastrado na base</small></div><div class="stat"><span class="stat-label">Categorias cadastradas</span><strong>${state.dashboard.categories}</strong><small>Organização do conhecimento</small></div><div class="stat"><span class="stat-label">Etapa do projeto</span><strong style="font-size:21px">Estrutura inicial</strong><small>v${esc(state.version)} · Em desenvolvimento</small></div></section>
-      <div class="section-heading"><h2 style="font-size:17px;margin:0">Um fluxo, quatro pilares</h2><small>Módulos em evolução</small></div><section class="cards">${cards}</section><div class="section-heading"><h2 style="font-size:17px;margin:0">Orientações recentes</h2><small>Atualizações da base</small></div><section class="panel">${recent}</section>`;
+    const recent = state.recentArticles.length ? `<div class="table-wrap"><table><thead><tr><th>Título</th><th>Categoria</th><th>Atualização</th></tr></thead><tbody>${state.recentArticles.map(a => `<tr><td><a href="#knowledge/${encodeURIComponent(a.id)}" target="_self">${esc(a.title)}</a></td><td>${esc(a.category)}</td><td>${esc(date(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div>` : empty('Nenhuma orientação publicada','Os guias publicados pela Administração aparecerão aqui.');
+    $('content').innerHTML = heading('','Visão geral','') +
+      `<section class="stats"><div class="stat"><span class="stat-label">Orientações publicadas</span><strong>${state.dashboard.publishedArticles}</strong></div><div class="stat"><span class="stat-label">Categorias cadastradas</span><strong>${state.dashboard.categories}</strong></div><div class="stat"><span class="stat-label">Versão</span><strong style="font-size:21px">${esc(state.version)}</strong><small>Em desenvolvimento</small></div></section>
+      <div class="section-heading"><h2>Módulos</h2></div><section class="cards">${cards}</section><div class="section-heading"><h2>Orientações recentes</h2></div><section class="panel">${recent}</section>`;
   }
   function planned(id) {
     const p = pages[id];
@@ -73,12 +72,19 @@
   function render() {
     if (!state) return;
     const ticket = ++sequence;
-    let id = location.hash.slice(1) || 'dashboard';
+    const route = location.hash.slice(1).split('/');
+    let id = route[0] || 'dashboard';
     if (!Object.hasOwn(pages,id) || (id === 'admin' && state.user.role !== 'admin')) id = 'dashboard';
     $('breadcrumb').textContent = pages[id].title;
     document.querySelectorAll('.nav-link').forEach(a => { const active = a.dataset.page === id; a.classList.toggle('active',active); if(active) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
     document.body.classList.remove('menu-open'); $('menu-toggle').setAttribute('aria-expanded','false');
-    if (id === 'dashboard') dashboard(); else if (id === 'admin') admin(ticket); else planned(id);
+    if (id === 'dashboard') dashboard();
+    else if (id === 'admin') admin(ticket);
+    else if (id === 'knowledge') {
+      let code;
+      try {code = route[1] ? decodeURIComponent(route[1]) : '';} catch (_) {code = '__invalid__';}
+      window.SupportFlowKnowledge.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence,onChange:load,id:code});
+    } else planned(id);
   }
   async function load() {
     ++sequence; state = null; $('navigation').innerHTML = '';

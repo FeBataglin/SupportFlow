@@ -6,7 +6,23 @@ Central interna de apoio ao atendimento de aplicações web TOTVS Datasul em Goo
 
 Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de usuários e auditoria; estrutura de dados no Sheets.
 
-Base de conhecimento (v1.1), analisador de logs (v1.2), Gemini (v1.3), diagnóstico assistido (v1.4), histórico e indicadores futuros possuem apenas páginas explicativas. Não há upload, chat, pesquisa ou relatórios nesta versão, nem dados fictícios.
+A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 23 guias iniciais. Analisador de logs, Gemini, diagnóstico assistido, histórico e indicadores futuros continuam como páginas explicativas. Não há upload, chat ou relatórios nesta entrega, nem dados fictícios.
+
+## Guias de atendimento
+
+Depois de sincronizar os arquivos com `clasp push`, recarregue a URL de teste do aplicativo. Entre como administrador em **Base de conhecimento → Importar 23 guias iniciais**. Também é possível executar `importInitialGuides` no editor com uma conta admin já cadastrada. Não é necessário reexecutar a inicialização nem recolocar `INITIAL_ADMIN_EMAIL`.
+
+A importação adiciona KB-0001 a KB-0023 em cinco categorias, todos como **rascunho**. Abra cada guia, clique em **Editar guia**, revise o conteúdo, selecione **Publicado** e salve. Atendimento só consulta publicados; Administração lê e edita os rascunhos. Para retirar um guia de circulação, salve novamente como Rascunho.
+
+Pesquise por código, título, categoria, palavras-chave ou conteúdo (por exemplo F12, 500, PROPATH e objeto desatualizado). A pesquisa ignora acentos e exige que todos os termos estejam presentes. Os códigos KB no texto abrem guias relacionados; referências externas abrem outra aba. Um relacionado ainda não publicado permanece inacessível ao Atendimento.
+
+O conteúdo pode ser editado em Markdown, com pré-visualização: títulos, passos numerados, listas, campos em negrito, avisos e links. HTML e imagens não são interpretados. Objetivo, quando usar, pré-requisitos, passos, interpretação, evidências, ajuda, atenção, relacionados e referências foram preservados no texto. Palavras-chave, revisão, categoria, título e status possuem campos próprios. Capturas autorizadas e criação de novos guias fora do pacote inicial ficam para evolução posterior.
+
+Reimportar preserva registros existentes, inclusive edições. Se um código já pertencer a outro artigo, o código é reportado como conflito e não é alterado. Guias editados conservam a origem no metadado privado; não são substituídos mesmo após mudança de título. Gravações concorrentes são rejeitadas quando a data de alteração já mudou. Não há histórico de versões completo: a revisão é um campo editorial e a auditoria registra a operação solicitada.
+
+Fonte adotada: `docs/Guias_Atendimento_Fonte.md`, cópia do Markdown fornecido. O DOCX foi consultado como referência complementar. Instruções editoriais, catálogo e lista global de referências não integram o corpo dos artigos; cada guia conserva suas próprias referências. Orientações gerais ficam em uma seção recolhível na listagem. O conteúdo não foi certificado como política oficial nem suas referências foram revalidadas nesta implementação.
+
+`GuideSeeds.gs` é gerado por `node scripts/build-guides.cjs`, sem dependências. Alterar a fonte e regenerar o pacote não atualiza artigos já importados, para proteger edições; atualize-os pela aplicação. Campos editoriais ficam em JSON versionado dentro de `Articles.content`, sem alterar cabeçalhos ou migrar a planilha existente.
 
 ## Arquivos
 
@@ -15,6 +31,8 @@ Base de conhecimento (v1.1), analisador de logs (v1.2), Gemini (v1.3), diagnóst
 | Código.js | Entrada web, bootstrap e operações administrativas |
 | Auth.gs | Identidade, domínios e perfis |
 | DataService.gs | Persistência, inicialização e auditoria |
+| Knowledge.gs / GuideSeeds.gs | Consulta, edição, importação e conteúdo inicial dos guias |
+| KnowledgeScripts.html | Lista, leitura e editor dos guias |
 | Index.html / Styles.html / Scripts.html | Interface e comportamento do frontend |
 | appsscript.json | Runtime V8, fuso e escopos OAuth |
 | tests/backend.test.cjs | Testes locais com serviços Google simulados |
@@ -31,7 +49,7 @@ Base de conhecimento (v1.1), analisador de logs (v1.2), Gemini (v1.3), diagnóst
    | `SPREADSHEET_ID` | Opcional na primeira execução: ID de uma planilha dedicada. Se ausente, a inicialização cria uma. |
 
 3. Para sincronizar, use CLASP instalado e autenticado: confira o destino em `.clasp.json` e execute `clasp status`, depois `clasp push` para o projeto de desenvolvimento. Nenhum push ou deploy foi executado nesta entrega. `.claspignore` envia somente os arquivos da aplicação.
-4. Execute **`setupSupportFlow_` pelo editor Apps Script** e autorize os escopos de identidade e planilhas. O executor deve coincidir com `INITIAL_ADMIN_EMAIL` e pertencer a um domínio permitido. O sufixo `_` impede chamadas do frontend.
+4. Execute **`setupSupportFlow` pelo editor Apps Script**, no arquivo `DataService.gs`, e autorize os escopos de identidade e planilhas. O executor deve coincidir com `INITIAL_ADMIN_EMAIL` e pertencer a um domínio permitido. Sincronize os arquivos locais antes de procurar a função no editor remoto.
 5. A inicialização salva `SPREADSHEET_ID`, cria tabelas ausentes e cadastra o primeiro admin somente quando `Users` está vazia. Reexecutar preserva dados. Cabeçalhos incompatíveis geram erro sem substituição. Uma falha parcial pode ser corrigida e a função repetida.
 6. Após inicializar, remova `INITIAL_ADMIN_EMAIL` até precisar de manutenção pelo editor. Cadastre usuários pela Administração; não existe acesso automático para todo o domínio.
 
@@ -59,7 +77,7 @@ Tabelas iniciais: `Users`, `Categories`, `Articles`, `Audit`. Estruturas reserva
 
 Alterações de usuários usam lock do script e preservam ao menos um admin ativo. Auditoria é gravada antes da alteração como registro da operação solicitada, sem garantia transacional de conclusão. Sheets não oferece transação entre essas duas gravações. Eventos contêm e-mails administrativos: definir acesso e retenção antes de produção. Não existe limpeza automática.
 
-Inicialização e helpers terminam em `_` e não são expostos via `google.script.run`. Endpoints públicos revalidam as permissões em cada chamada; esconder o menu não é a medida de autorização.
+Helpers terminam em `_` e não são expostos via `google.script.run`. A entrada `setupSupportFlow` é pública e exige identidade correspondente a `INITIAL_ADMIN_EMAIL` e domínio permitido, inclusive em chamadas diretas. Remova essa propriedade após configurar. Demais endpoints públicos revalidam permissões em cada chamada; esconder o menu não é a medida de autorização.
 
 Não há conexão Gemini nem escopo externo. Serviço aprovado, modelo, sanitização e política de privacidade serão definidos para v1.3. Não armazene logs brutos nem segredos nas tabelas reservadas.
 
@@ -81,7 +99,10 @@ Checklist manual no ambiente Apps Script:
 - Atendimento chamando endpoint administrativo diretamente: rejeitar no servidor.
 - Alterar perfil, desativar conta e tentar remover o último admin: validar proteção.
 - Conferir dashboard vazio, falha de conexão e botão de nova tentativa.
-- Navegar em todos os módulos e confirmar indicação de recurso planejado.
+- Importar duas vezes, revisar e publicar um guia; Atendimento deve ver somente publicados.
+- Buscar F12/500/PROPATH/objeto desatualizado, abrir relacionados e verificar referências externas.
+- Editar e reimportar: preservar alterações; um editor desatualizado deve receber aviso de conflito.
+- Navegar nos módulos restantes e confirmar indicação de recurso planejado.
 - Conferir temas claro/escuro, persistência após recarregar, teclado e larguras de 360/768/1440 px.
 - Validar menu móvel e tabelas com rolagem horizontal.
 

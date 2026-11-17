@@ -2,7 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+- Base de conhecimento com pesquisa por código, título, categoria, palavras-chave e texto, ignorando acentos.
+- Pacote inicial de 23 guias em cinco categorias, importado como rascunho com preservação de edições e reporte de conflitos de código.
+- Leitura com listas numeradas, avisos, referências e links internos; orientações gerais em seção recolhível.
+- Edição com pré-visualização, revisão e publicação por administrador; rascunhos bloqueados ao Atendimento no servidor.
+- Proteção contra edição concorrente e testes de importação, publicação, busca, permissões e renderização segura.
+- Fonte Markdown preservada e gerador reproduzível sem dependências. Nenhuma chamada ao Gemini.
+
+### Changed
+- Removido banner promocional do dashboard e slogan do rodapé.
+- Textos dos módulos substituídos por descrições funcionais; títulos, indicadores e estados vazios simplificados.
+
 ### Fixed
+- Entrada `setupSupportFlow` sem sufixo para execução no editor, preservando validação de identidade e domínio. Instruções de configuração atualizadas.
 - Mensagem de acesso diferencia ALLOWED_DOMAINS ausente de domínio não autorizado e orienta a configuração inicial, sem liberar acesso automaticamente.
 
 ## [1.0.0] — 2026-11-17

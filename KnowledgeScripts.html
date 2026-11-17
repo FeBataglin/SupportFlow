@@ -1,0 +1,109 @@
+<script>
+window.SupportFlowKnowledge = (() => {
+  'use strict';
+  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const href = id => '#knowledge/' + encodeURIComponent(id);
+  function inline(text) {
+    const tokens = /\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|KB-\d{4}(?:\/\d{4})*|\*\*[^*\n]+\*\*/g;
+    let result = '', start = 0;
+    for (const match of String(text).matchAll(tokens)) {
+      result += esc(text.slice(start,match.index));
+      const token = match[0];
+      if (token.startsWith('[')) {
+        const link = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(token);
+        result += `<a href="${esc(link[2])}" target="_blank" rel="noopener noreferrer">${esc(link[1])}</a>`;
+      } else if (token.startsWith('KB-')) {
+        result += token.slice(3).split('/').map((n,i) => `<a href="${href('KB-'+n)}" target="_self">${i ? n : 'KB-'+n}</a>`).join('/');
+      } else result += '<strong>'+esc(token.slice(2,-2))+'</strong>';
+      start = match.index + token.length;
+    }
+    return result + esc(text.slice(start));
+  }
+  // Subconjunto Markdown sem HTML: títulos, campos, listas, links e parágrafos.
+  function markdown(text) {
+    const lines = String(text).replace(/\r\n/g,'\n').split('\n');
+    let html = '', list = '';
+    function close() { if(list) {html += '</'+list+'>';list='';} }
+    for (let i=0;i<lines.length;i++) {
+      const line = lines[i].trim();
+      if (!line) {
+        const next = lines.slice(i+1).find(s => s.trim());
+        if (!(list === 'ol' && /^\d+\. /.test(next || '')) && !(list === 'ul' && /^- /.test(next || ''))) close();
+        continue;
+      }
+      const number = /^(\d+)\. (.+)$/.exec(line), bullet = /^- (.+)$/.exec(line);
+      if(number || bullet) {
+        const type = number ? 'ol' : 'ul';
+        if(list !== type) {close();list=type;html += number ? '<ol start="'+Number(number[1])+'">' : '<ul>';}
+        html += '<li>'+inline(number ? number[2] : bullet[1])+'</li>';continue;
+      }
+      close();
+      const heading = /^#{1,6} (.+)$/.exec(line), field = /^\*\*([^*]+):\*\*\s*(.*)$/.exec(line);
+      if(heading) html += '<h2>'+inline(heading[1])+'</h2>';
+      else if(field) html += `<section class="guide-field${field[1] === 'Atenção' ? ' guide-warning' : ''}"><h2>${esc(field[1])}</h2><p>${inline(field[2])}</p></section>`;
+      else html += '<p>'+inline(line)+'</p>';
+    }
+    close();return html;
+  }
+  async function render(options) {
+    const {rpc,user,content,isCurrent,onChange,id} = options;
+    const admin = user.role === 'admin';
+    const query = {query:'',category:'',status:''};
+    const title = '<div class="page-heading"><h1>Base de conhecimento</h1></div>';
+    const fail = error => { if(isCurrent()) content.innerHTML = title + `<section class="panel"><p role="alert">${esc(error.message || error)}</p><a class="button secondary" target="_self" href="#knowledge">Voltar aos guias</a></section>`; };
+    function editor(article) {
+      content.innerHTML = `<a href="${href(article.id)}" target="_self" id="cancel-edit" class="text-button">← Voltar ao guia</a><div class="page-heading" style="margin-top:20px"><h1>Editar ${esc(article.id)}</h1></div>
+        <form id="guide-form" class="panel guide-editor"><label>Título<input name="title" required maxlength="250" value="${esc(article.title)}"></label><div class="guide-editor-row"><label>Categoria<input name="category" required maxlength="100" value="${esc(article.category)}"></label><label>Revisão<input name="revision" maxlength="50" value="${esc(article.revision)}"></label><label>Status<select name="status"><option value="draft"${article.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${article.status === 'published' ? ' selected' : ''}>Publicado</option></select></label></div><label>Palavras-chave<input name="keywords" maxlength="1000" value="${esc(article.keywords)}"></label><label>Conteúdo em Markdown<textarea name="markdown" rows="26" maxlength="35000" required>${esc(article.markdown)}</textarea></label><p class="editor-help">Use ### para títulos, números para passos e **Atenção:** para avisos. Códigos KB viram links. HTML e imagens não são interpretados. Publique somente após revisão técnica.</p><div class="guide-actions"><button class="button" type="submit">Salvar alterações</button><button class="button secondary" id="preview-guide" type="button">Pré-visualizar</button></div><p id="guide-status" role="status"></p><div id="guide-preview" class="guide-body" hidden></div></form>`;
+      const form = document.getElementById('guide-form');
+      document.getElementById('cancel-edit').addEventListener('click',event => {event.preventDefault();read(article);});
+      document.getElementById('preview-guide').addEventListener('click',() => {
+        const preview = document.getElementById('guide-preview');
+        preview.hidden = !preview.hidden;
+        if(!preview.hidden) preview.innerHTML = markdown(form.elements.markdown.value);
+      });
+      form.addEventListener('submit',async event => {
+        event.preventDefault();
+        const status = document.getElementById('guide-status'), button = form.querySelector('[type=submit]');
+        button.disabled = true;status.textContent = 'Salvando…';
+        try {
+          const input = {id:article.id,updatedAt:article.updatedAt};
+          ['title','category','revision','keywords','markdown','status'].forEach(key => {input[key]=form.elements[key].value;});
+          await rpc('saveGuide',input);
+          if(isCurrent()) await onChange();
+        } catch(error) { if(isCurrent()) status.textContent = error.message || String(error); }
+        finally {button.disabled=false;}
+      });
+    }
+    function read(article) {
+      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<button id="edit-guide" class="button secondary">Editar guia</button>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Rascunho · revisão pendente'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Rascunho visível apenas à Administração. Revise o conteúdo antes de publicar.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
+      if(admin) document.getElementById('edit-guide').addEventListener('click',() => editor(article));
+    }
+    async function list() {
+      const data = await rpc('listGuides',query);
+      if(!isCurrent()) return;
+      content.innerHTML = title + (admin ? '<div class="guide-actions"><p>Revise os rascunhos e publique os guias aprovados.</p><button class="button secondary" id="import-guides">Importar 23 guias iniciais</button></div><p id="import-status" role="status"></p>' : '') +
+        `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button></form>
+        <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p><section class="guide-list">${data.articles.length ? data.articles.map(a => `<a class="panel guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Rascunho')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Importe os guias iniciais ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
+      const form = document.getElementById('guide-search');
+      form.addEventListener('submit',async event => {
+        event.preventDefault();query.query=form.elements.query.value;query.category=form.elements.category.value;query.status=admin ? form.elements.status.value : '';
+        const button=form.querySelector('button');button.disabled=true;
+        try {await list();} catch(error) {fail(error);} finally {button.disabled=false;}
+      });
+      if(admin) document.getElementById('import-guides').addEventListener('click',async event => {
+        const button = event.currentTarget, status = document.getElementById('import-status');button.disabled=true;status.textContent='Importando rascunhos…';
+        try {
+          const result = await rpc('importInitialGuides');
+          if(!isCurrent()) return;
+          await list();
+          if(isCurrent()) document.getElementById('import-status').textContent = `${result.imported} importado(s); ${result.skipped.length} preservado(s).` + (result.conflicts.length ? ' Códigos em conflito, sem alteração: '+result.conflicts.join(', ') : '');
+        } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);} finally {button.disabled=false;}
+      });
+    }
+    content.innerHTML = title + '<p role="status">Carregando guias…</p>';
+    try { if(id) {const article=await rpc('getGuide',id);if(isCurrent()) read(article);} else await list(); }
+    catch(error) {fail(error);}
+  }
+  return {render,markdown};
+})();
+</script>

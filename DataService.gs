@@ -63,7 +63,12 @@ function audit_(actor, action, detail) {
     detail: detail, createdAt: new Date().toISOString() });
 }
 
-/** Executar SOMENTE pelo editor. Sufixo _ impede chamadas por google.script.run. */
+/** Entrada de configuração para execução pelo editor; valida identidade no helper. */
+function setupSupportFlow() {
+  return setupSupportFlow_();
+}
+
+/** Implementação privada; exige INITIAL_ADMIN_EMAIL e domínio autorizado. */
 function setupSupportFlow_() {
   var properties = PropertiesService.getScriptProperties();
   var email = normalizeEmail_(Session.getActiveUser().getEmail());

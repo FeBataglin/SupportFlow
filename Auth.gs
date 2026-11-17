@@ -13,7 +13,7 @@ function requireUser_(role) {
   if (!email) throw new Error('Não foi possível identificar sua conta Google corporativa. Verifique a implantação com o administrador.');
   var configuredDomains = PropertiesService.getScriptProperties().getProperty('ALLOWED_DOMAINS');
   if (!configuredDomains || !configuredDomains.split(',').some(function (domain) { return domain.trim(); })) {
-    throw new Error('Configuração inicial pendente: defina ALLOWED_DOMAINS nas Propriedades do script e execute setupSupportFlow_ pelo editor Apps Script.');
+    throw new Error('Configuração inicial pendente: defina ALLOWED_DOMAINS nas Propriedades do script e execute setupSupportFlow pelo editor Apps Script.');
   }
   if (!allowedDomain_(email)) throw new Error('Acesso restrito: o domínio da conta conectada (' + email.split('@')[1] + ') não está autorizado em ALLOWED_DOMAINS. Verifique a conta Google utilizada ou solicite a configuração ao administrador.');
   var user = rows_('Users').filter(function (u) { return u.email === email && u.active === true; })[0];

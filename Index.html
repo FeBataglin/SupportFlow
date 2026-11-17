@@ -12,14 +12,15 @@
     <div class="workspace">
       <header>
         <button class="icon-button mobile-menu" id="menu-toggle" aria-label="Abrir menu" aria-expanded="false">☰</button>
-        <div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb">Visão geral</strong></div>
+        <div class="breadcrumb">SupportFlow <span>/</span> <strong id="breadcrumb">Visão geral</strong></div>
         <div class="header-actions"><button id="theme-toggle" class="icon-button" aria-label="Alternar tema">◐</button><span class="separator"></span><span class="avatar" id="avatar">SF</span><div class="identity"><strong id="identity-name">Conectando…</strong><small id="identity-role">Validando acesso</small></div></div>
       </header>
-      <main id="content" tabindex="-1"><div class="status-panel" role="status"><span class="loader"></span><h1>Preparando seu workspace</h1><p>Validando a conta corporativa e carregando as configurações.</p></div></main>
-      <footer>SupportFlow <span>Conhecimento que conecta. Atendimento que evolui.</span></footer>
+      <main id="content" tabindex="-1"><div class="status-panel" role="status"><span class="loader"></span><h1>Carregando</h1><p>Validando acesso.</p></div></main>
+      <footer>SupportFlow <span>v1.0.0</span></footer>
     </div>
   </div>
   <div id="notification" role="status" aria-live="polite"></div>
+  <?!= include_('KnowledgeScripts'); ?>
   <?!= include_('Scripts'); ?>
 </body>
 </html>
