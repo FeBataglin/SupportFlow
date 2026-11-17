@@ -38,6 +38,8 @@
 - Fonte Markdown preservada e gerador reproduzível sem dependências. Nenhuma chamada ao Gemini.
 
 ### Changed
+- Removidos botões individuais de remoção da listagem; ação em lote aparece somente após selecionar guias.
+- Caixas de seleção com área de clique ampliada, marcação em ciano, estado parcial, foco de teclado e destaque discreto do artigo selecionado.
 - KB-0025 a KB-0028 revisados para 1.1, com passos curtos, termos explicados e exemplos para o Atendimento iniciante. Edições 1.0 preservadas para comparação controlada.
 - Status draft apresentado como Não publicado, com resumo de cadastrados/publicados e ações diretas para publicação.
 - Removido banner promocional do dashboard e slogan do rodapé.
