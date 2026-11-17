@@ -44,6 +44,16 @@ test('nega acesso sem configuração, domínio aprovado ou identidade',() => {
   f.setEmail('admin@evil-example.com'); assert.throws(() => f.c.getBootstrap(),/restrito/);
   f.setEmail('admin@sub.example.com'); assert.throws(() => f.c.getBootstrap(),/restrito/);
 });
+test('distingue domínios não configurados de conta não autorizada',() => {
+  const f=fixture();
+  delete f.properties.ALLOWED_DOMAINS;
+  assert.throws(() => f.c.getBootstrap(),/Configuração inicial pendente.*ALLOWED_DOMAINS/);
+  f.properties.ALLOWED_DOMAINS=' , ';
+  assert.throws(() => f.c.getBootstrap(),/Configuração inicial pendente/);
+  f.properties.ALLOWED_DOMAINS='other.com';
+  assert.throws(() => f.c.getBootstrap(),/example.com.*não está autorizado/);
+});
+
 test('inicialização privada idempotente preserva dados e cria apenas uma planilha',() => {
   const f=fixture(); f.c.setupSupportFlow_();
   f.c.writeRow_('Categories',{id:'cat',name:'Network'});

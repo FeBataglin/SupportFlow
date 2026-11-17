@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Mensagem de acesso diferencia ALLOWED_DOMAINS ausente de domínio não autorizado e orienta a configuração inicial, sem liberar acesso automaticamente.
+
 ## [1.0.0] — 2026-11-17
 
 ### Added
