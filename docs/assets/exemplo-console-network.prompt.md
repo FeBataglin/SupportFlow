@@ -1,0 +1,10 @@
+# Exemplo Console e Network
+
+Gerado com a ferramenta integrada imagegen. Ilustração simulada para revisão; ainda não incorporada ao aplicativo.
+
+## Prompt utilizado
+
+Use case: scientific-educational. Asset type: first illustrative example for Portuguese internal web support guides, preview to user, not actual screenshot. Create a crisp high resolution landscape instructional graphic, clean utilitarian style, white background, navy #14283E text and cyan #34C9DC annotations. No marketing copy, no decorative artwork. Title exactly "Exemplo de investigação no navegador". Subtitle exactly "SIMULAÇÃO • dados fictícios • a interface pode variar". Two stacked clearly separated schematic browser DevTools panels with readable text, flat realistic desktop UI, no company logo.
+Top panel heading "1. Network: localizar a requisição com falha". DevTools tabs Elements, Console, Network; Network selected. Show checked Preserve log, Fetch/XHR filter. Request table columns Name, Status, Type. Three rows: listar 200 fetch; salvar 500 fetch (selected pale red); detalhes 200 fetch. Callout numbered 1 points at selected salvar row with label "Selecione a chamada". Callout 2 points precisely at 500 with label "Registre o status". To right of request table show selected request sub-tabs Headers, Payload, Response; Response selected. Small response JSON exactly {"erro": "Falha ao processar solicitação"}. Callout 3 points at Response: "Leia a resposta".
+Bottom panel heading "2. Console: registrar a mensagem". DevTools Console tab selected. One red message "TypeError: Cannot read properties of undefined" followed by indented "at salvar (exemplo.js:42)". A callout 4 points at this red message with label "Copie a mensagem completa".
+Footer exactly "Status e mensagens são evidências; não confirmam a causa." All visible text in Portuguese except actual DevTools tabs and technical error names as specified. Do not depict a real TOTVS screen, don't invent proprietary menu names, no real URLs, users, tokens, customer data. Keep typography large, sharp and legible; no paragraphs.

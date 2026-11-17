@@ -19,7 +19,7 @@ window.SupportFlowKnowledge = (() => {
     }
     return result + esc(text.slice(start));
   }
-  // Subconjunto Markdown sem HTML: títulos, campos, listas, links e parágrafos.
+  // HTML arbitrário e imagens externas não são interpretados.
   function markdown(text) {
     const lines = String(text).replace(/\r\n/g,'\n').split('\n');
     let html = '', list = '';
@@ -39,7 +39,9 @@ window.SupportFlowKnowledge = (() => {
       }
       close();
       const heading = /^#{1,6} (.+)$/.exec(line), field = /^\*\*([^*]+):\*\*\s*(.*)$/.exec(line);
-      if(heading) html += '<h2>'+inline(heading[1])+'</h2>';
+      const image = /^!\[([^\]\r\n]{0,200})\]\(sf-image:([A-Za-z0-9_-]{1,80})\)$/.exec(line);
+      if(image) html += `<figure class="guide-image" data-guide-image="${esc(image[2])}"><button type="button" class="guide-image-open" disabled aria-label="Ampliar imagem"><span>Carregando imagem…</span></button><figcaption>${esc(image[1])}</figcaption></figure>`;
+      else if(heading) html += '<h2>'+inline(heading[1])+'</h2>';
       else if(field) html += `<section class="guide-field${field[1] === 'Atenção' ? ' guide-warning' : ''}"><h2>${esc(field[1])}</h2><p>${inline(field[2])}</p></section>`;
       else html += '<p>'+inline(line)+'</p>';
     }
@@ -51,15 +53,100 @@ window.SupportFlowKnowledge = (() => {
     const query = {query:'',category:'',status:''};
     const title = '<div class="page-heading"><h1>Base de conhecimento</h1></div>';
     const fail = error => { if(isCurrent()) content.innerHTML = title + `<section class="panel"><p role="alert">${esc(error.message || error)}</p><a class="button secondary" target="_self" href="#knowledge">Voltar aos guias</a></section>`; };
+    const imageRequests = new Map();
+    function confirmRemove(article) {
+      const dialog = document.createElement('dialog');dialog.className='guide-delete-dialog';
+      dialog.setAttribute('aria-label','Confirmar remoção do guia');
+      dialog.innerHTML=`<h2>Remover ${esc(article.id)}?</h2><p>${esc(article.title)}</p><p>O guia deixará de aparecer na base e não será recriado ao importar novamente. As imagens no Drive serão preservadas.</p><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button danger" data-confirm>Remover guia</button></div><p role="status" data-status></p>`;
+      const confirm=dialog.querySelector('[data-confirm]'),cancel=dialog.querySelector('[data-cancel]'),status=dialog.querySelector('[data-status]');
+      let pending=false;
+      cancel.addEventListener('click',() => dialog.close());
+      dialog.addEventListener('cancel',event => {if(pending) event.preventDefault();});
+      dialog.addEventListener('close',() => dialog.remove());
+      confirm.addEventListener('click',async () => {
+        pending=true;confirm.disabled=true;cancel.disabled=true;status.textContent='Removendo guia…';
+        try {
+          await rpc('deleteGuide',{id:article.id,updatedAt:article.updatedAt,confirmId:article.id});
+          dialog.close();
+          if(isCurrent()) {location.hash='#knowledge';await onChange();}
+        } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
+        finally {pending=false;confirm.disabled=false;cancel.disabled=false;}
+      });
+      content.append(dialog);dialog.showModal();cancel.focus();
+    }
+    function enlargeImage(src,caption) {
+      const dialog = document.createElement('dialog');dialog.className='guide-image-dialog';
+      dialog.setAttribute('aria-label','Imagem do guia');
+      const close = document.createElement('button');close.type='button';close.className='button secondary';close.textContent='Fechar';
+      close.addEventListener('click',() => dialog.close());
+      const image = document.createElement('img');image.src=src;image.alt=caption;
+      const legend = document.createElement('p');legend.textContent=caption;
+      dialog.append(close,image,legend);content.append(dialog);
+      dialog.addEventListener('close',() => dialog.remove());
+      dialog.addEventListener('click',event => {if(event.target===dialog) dialog.close();});
+      dialog.showModal();
+    }
+    function hydrateImages(root,article) {
+      const figures = Array.from(root.querySelectorAll('[data-guide-image]'));
+      let next = 0;
+      async function load(figure) {
+        const button=figure.querySelector('button'), imageId=figure.dataset.guideImage;
+        button.disabled=true;button.textContent='Carregando imagem…';
+        try {
+          if(!imageRequests.has(imageId)) imageRequests.set(imageId,rpc('getGuideImage',article.id,imageId));
+          const data=await imageRequests.get(imageId);
+          if(!isCurrent() || !root.contains(figure)) return;
+          if(!['image/png','image/jpeg','image/webp'].includes(data.mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(data.base64)) throw new Error('Formato de imagem inválido.');
+          const src='data:'+data.mimeType+';base64,'+data.base64;
+          const caption=figure.querySelector('figcaption').textContent;
+          const img=document.createElement('img');img.alt=caption || 'Exemplo do guia';
+          img.addEventListener('error',() => {button.textContent='Não foi possível exibir o arquivo. Envie outra imagem pelo editor.';button.disabled=true;});
+          img.src=src;button.replaceChildren(img);button.disabled=false;
+          button.setAttribute('aria-label','Ampliar: '+(caption || 'imagem do guia'));
+          button.onclick=() => enlargeImage(src,caption);
+        } catch(error) {
+          imageRequests.delete(imageId);
+          if(!isCurrent() || !root.contains(figure)) return;
+          button.disabled=false;button.textContent=(error.message || 'Falha ao carregar imagem')+' — tentar novamente';
+          button.setAttribute('aria-label','Tentar carregar a imagem novamente');button.onclick=() => load(figure);
+        }
+      }
+      async function worker() {while(next<figures.length && isCurrent()) await load(figures[next++]);}
+      // Limita a concorrência com o Apps Script a duas imagens por vez.
+      worker();worker();
+    }
     function editor(article) {
       content.innerHTML = `<a href="${href(article.id)}" target="_self" id="cancel-edit" class="text-button">← Voltar ao guia</a><div class="page-heading" style="margin-top:20px"><h1>Editar ${esc(article.id)}</h1></div>
-        <form id="guide-form" class="panel guide-editor"><label>Título<input name="title" required maxlength="250" value="${esc(article.title)}"></label><div class="guide-editor-row"><label>Categoria<input name="category" required maxlength="100" value="${esc(article.category)}"></label><label>Revisão<input name="revision" maxlength="50" value="${esc(article.revision)}"></label><label>Status<select name="status"><option value="draft"${article.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${article.status === 'published' ? ' selected' : ''}>Publicado</option></select></label></div><label>Palavras-chave<input name="keywords" maxlength="1000" value="${esc(article.keywords)}"></label><label>Conteúdo em Markdown<textarea name="markdown" rows="26" maxlength="35000" required>${esc(article.markdown)}</textarea></label><p class="editor-help">Use ### para títulos, números para passos e **Atenção:** para avisos. Códigos KB viram links. HTML e imagens não são interpretados. Publique somente após revisão técnica.</p><div class="guide-actions"><button class="button" type="submit">Salvar alterações</button><button class="button secondary" id="preview-guide" type="button">Pré-visualizar</button></div><p id="guide-status" role="status"></p><div id="guide-preview" class="guide-body" hidden></div></form>`;
+        <form id="guide-form" class="panel guide-editor"><label>Título<input name="title" required maxlength="250" value="${esc(article.title)}"></label><div class="guide-editor-row"><label>Categoria<input name="category" required maxlength="100" value="${esc(article.category)}"></label><label>Revisão<input name="revision" maxlength="50" value="${esc(article.revision)}"></label><label>Status<select name="status"><option value="draft"${article.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${article.status === 'published' ? ' selected' : ''}>Publicado</option></select></label></div><label>Palavras-chave<input name="keywords" maxlength="1000" value="${esc(article.keywords)}"></label><label>Conteúdo em Markdown<textarea name="markdown" rows="26" maxlength="35000" required>${esc(article.markdown)}</textarea></label><p class="editor-help">Use ### para títulos, números para passos e **Atenção:** para avisos. Códigos KB viram links. Para incluir uma imagem, posicione o cursor em uma linha entre os parágrafos e use o envio abaixo.</p><fieldset class="guide-image-upload"><legend>Adicionar imagem</legend><label>Arquivo (PNG, JPEG ou WebP, até 2 MB)<input id="guide-image-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label>Legenda e descrição da imagem<input id="guide-image-caption" maxlength="200" placeholder="Ex.: Requisição com status 500 na aba Network"></label><p class="editor-help">Envie apenas exemplos ou capturas autorizadas, sem credenciais ou dados de clientes. O arquivo é enviado ao Drive ao clicar no botão; depois, salve o guia.</p><button type="button" class="button secondary" id="upload-guide-image">Enviar e inserir imagem</button><p id="image-upload-status" role="status"></p></fieldset><div class="guide-actions"><button class="button" type="submit">Salvar alterações</button><button class="button secondary" id="preview-guide" type="button">Pré-visualizar</button></div><p id="guide-status" role="status"></p><div id="guide-preview" class="guide-body" hidden></div></form>`;
       const form = document.getElementById('guide-form');
       document.getElementById('cancel-edit').addEventListener('click',event => {event.preventDefault();read(article);});
+      document.getElementById('upload-guide-image').addEventListener('click',async () => {
+        const button=document.getElementById('upload-guide-image'), status=document.getElementById('image-upload-status');
+        const fileInput=document.getElementById('guide-image-file'), file=fileInput.files[0];
+        const caption=document.getElementById('guide-image-caption').value.trim();
+        const textarea=form.elements.markdown, save=form.querySelector('[type=submit]');
+        if(!file || !['image/png','image/jpeg','image/webp'].includes(file.type) || file.size>2*1024*1024 || file.size===0) {
+          status.textContent='Selecione uma imagem PNG, JPEG ou WebP de até 2 MB.';return;
+        }
+        if(!caption || /[\]\r\n]/.test(caption)) {status.textContent='Preencha uma legenda sem quebras de linha ou colchete de fechamento.';return;}
+        const start=textarea.selectionStart,end=textarea.selectionEnd;
+        button.disabled=true;save.disabled=true;textarea.disabled=true;status.textContent='Enviando imagem…';
+        try {
+          const data=await new Promise((resolve,reject) => {
+            const reader=new FileReader();reader.onload=() => resolve(reader.result);reader.onerror=() => reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file);
+          });
+          const result=await rpc('uploadGuideImage',{guideId:article.id,mimeType:file.type,base64:String(data).split(',')[1]});
+          if(!isCurrent() || !content.contains(form)) return;
+          const token='\n\n!['+caption+'](sf-image:'+result.id+')\n\n';
+          textarea.setRangeText(token,start,end,'end');textarea.disabled=false;textarea.focus();
+          status.textContent='Imagem inserida. Salve as alterações para incluí-la no guia.';fileInput.value='';
+        } catch(error) {if(isCurrent() && content.contains(form)) status.textContent=error.message || String(error);}
+        finally {button.disabled=false;save.disabled=false;textarea.disabled=false;}
+      });
       document.getElementById('preview-guide').addEventListener('click',() => {
         const preview = document.getElementById('guide-preview');
         preview.hidden = !preview.hidden;
-        if(!preview.hidden) preview.innerHTML = markdown(form.elements.markdown.value);
+        if(!preview.hidden) {preview.innerHTML = markdown(form.elements.markdown.value);hydrateImages(preview,article);}
       });
       form.addEventListener('submit',async event => {
         event.preventDefault();
@@ -75,15 +162,20 @@ window.SupportFlowKnowledge = (() => {
       });
     }
     function read(article) {
-      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<button id="edit-guide" class="button secondary">Editar guia</button>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Rascunho · revisão pendente'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Rascunho visível apenas à Administração. Revise o conteúdo antes de publicar.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
-      if(admin) document.getElementById('edit-guide').addEventListener('click',() => editor(article));
+      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<div class="guide-actions-right"><button id="edit-guide" class="button secondary">Editar guia</button><button id="remove-guide" class="button danger">Remover guia</button></div>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Rascunho · revisão pendente'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Rascunho visível apenas à Administração. Revise o conteúdo antes de publicar.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
+      if(admin) {
+        document.getElementById('edit-guide').addEventListener('click',() => editor(article));
+        document.getElementById('remove-guide').addEventListener('click',() => confirmRemove(article));
+      }
+      hydrateImages(content.querySelector('.guide-body'),article);
     }
     async function list() {
       const data = await rpc('listGuides',query);
       if(!isCurrent()) return;
       content.innerHTML = title + (admin ? '<div class="guide-actions"><p>Revise os rascunhos e publique os guias aprovados.</p><button class="button secondary" id="import-guides">Importar 23 guias iniciais</button></div><p id="import-status" role="status"></p>' : '') +
         `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button></form>
-        <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p><section class="guide-list">${data.articles.length ? data.articles.map(a => `<a class="panel guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Rascunho')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Importe os guias iniciais ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
+        <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p><section class="guide-list">${data.articles.length ? data.articles.map((a,i) => `<div class="panel guide-list-row"><a class="guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Rascunho')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a>${admin ? '<button type="button" class="button danger remove-guide" data-index="'+i+'" aria-label="Remover '+esc(a.id)+'">Remover</button>' : ''}</div>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Importe os guias iniciais ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
+      if(admin) content.querySelectorAll('.remove-guide').forEach(button => button.addEventListener('click',() => confirmRemove(data.articles[Number(button.dataset.index)])));
       const form = document.getElementById('guide-search');
       form.addEventListener('submit',async event => {
         event.preventDefault();query.query=form.elements.query.value;query.category=form.elements.category.value;query.status=admin ? form.elements.status.value : '';

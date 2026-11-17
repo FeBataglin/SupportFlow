@@ -105,6 +105,18 @@
   $('theme-toggle').addEventListener('click',() => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try {localStorage.setItem('supportflow-theme',next);} catch (_) {} });
   $('menu-toggle').addEventListener('click',() => { const open = document.body.classList.toggle('menu-open'); $('menu-toggle').setAttribute('aria-expanded',String(open)); });
   window.addEventListener('hashchange',render);
+  // Links de rota são tratados aqui para não navegar o iframe ou a janela
+  // principal do Apps Script por causa de <base target="_top">.
+  document.addEventListener('click',event => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    const link = event.target.closest('a[href]');
+    if (!link) return;
+    const route = link.getAttribute('href');
+    if (!route || !route.startsWith('#')) return;
+    event.preventDefault();
+    if (location.hash === route) render();
+    else location.hash = route;
+  });
   window.addEventListener('keydown',event => { if(event.key === 'Escape') {document.body.classList.remove('menu-open'); $('menu-toggle').setAttribute('aria-expanded','false');} });
   load();
 })();

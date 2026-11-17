@@ -18,7 +18,7 @@ function listGuides(options) {
   var user = requireUser_();
   options = options || {};
   var terms = searchText_(String(options.query || '').slice(0, 300)).split(/\s+/).filter(Boolean);
-  var articles = rows_('Articles').filter(function (a) { return user.role === 'admin' || a.status === 'published'; }).map(guideData_);
+  var articles = rows_('Articles').filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); }).map(guideData_);
   var categories = articles.map(function (a) { return a.category; }).filter(function (c, i, all) { return c && all.indexOf(c) === i; }).sort();
   articles = articles.filter(function (a) {
     if (options.category && a.category !== options.category) return false;
@@ -33,7 +33,7 @@ function listGuides(options) {
 
 function getGuide(id) {
   var user = requireUser_();
-  var article = rows_('Articles').filter(function (a) { return a.id === id && (user.role === 'admin' || a.status === 'published'); })[0];
+  var article = rows_('Articles').filter(function (a) { return a.id === id && a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); })[0];
   if (!article) throw new Error('Guia não encontrado ou ainda não publicado.');
   return guideData_(article);
 }
@@ -53,8 +53,9 @@ function saveGuide(input) {
   try {
     var user = requireUser_('admin');
     var article = rows_('Articles').filter(function (a) { return a.id === input.id; })[0];
-    if (!article) throw new Error('Guia não encontrado.');
+    if (!article || article.status === 'deleted') throw new Error('Guia não encontrado ou removido.');
     if (article.updatedAt !== input.updatedAt) throw new Error('Este guia foi alterado por outra pessoa. Recarregue antes de salvar.');
+    validateGuideImages_(article.id, input.markdown);
     var previous = guideData_(article);
     var now = new Date(Math.max(Date.now(), new Date(article.updatedAt).getTime() + 1 || 0)).toISOString();
     var content = JSON.stringify({ format: 'supportflow-guide-v1', markdown: input.markdown.trim(),
@@ -73,6 +74,26 @@ function ensureGuideCategory_(name, now) {
   if (!rows_('Categories').some(function (c) { return searchText_(c.name) === searchText_(name); })) {
     writeRow_('Categories', { id: Utilities.getUuid(), name: name, createdAt: now, updatedAt: now });
   }
+}
+
+/** Remoção lógica: mantém conteúdo e código para não recriar o guia na importação. */
+function deleteGuide(input) {
+  requireUser_('admin');
+  if (!input || typeof input.id !== 'string' || input.confirmId !== input.id) {
+    throw new Error('Confirme o guia que deseja remover.');
+  }
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var user = requireUser_('admin');
+    var article = rows_('Articles').filter(function (a) { return a.id === input.id; })[0];
+    if (!article || article.status === 'deleted') throw new Error('Guia não encontrado ou já removido.');
+    if (article.updatedAt !== input.updatedAt) throw new Error('Este guia foi alterado por outra pessoa. Recarregue antes de remover.');
+    audit_(user.email, 'GUIDE_DELETE_REQUEST', article.id + ' / ' + article.title);
+    article.status = 'deleted';
+    article.updatedAt = new Date(Math.max(Date.now(), new Date(article.updatedAt).getTime() + 1 || 0)).toISOString();
+    writeRow_('Articles', article, rowNumberForId_('Articles', article.id));
+    return { ok: true, id: article.id };
+  } finally { lock.releaseLock(); }
 }
 
 /** Disponível ao administrador no módulo Conhecimento ou pelo editor. */

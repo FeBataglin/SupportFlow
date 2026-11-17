@@ -2,7 +2,17 @@
 
 ## [Unreleased]
 
+### Assets
+- Primeiro exemplo ilustrativo de Console e Network gerado com dados fictícios e marcações. Arquivo e prompt em docs/assets; ainda não incorporado aos guias.
+
 ### Added
+- Remoção de guias por administradores, com confirmação na listagem e na leitura, auditoria e proteção contra alterações concorrentes.
+- Guias removidos ficam fora da base e não são recriados ao reimportar; registro técnico, categorias e arquivos no Drive são preservados. Imagens deixam de ser consultáveis pelo aplicativo.
+- Testes de cancelamento/confirmação, falha de remoção, permissões, concorrência, reimportação e preservação de imagens.
+- Imagens no editor dos guias: envio de PNG/JPEG/WebP até 2 MB, legenda, inserção no texto, pré-visualização e ampliação na leitura.
+- Armazenamento no Drive sem criação de links públicos e registro na nova tabela GuideImages, preparada sem sobrescrever a base existente.
+- Consulta de imagens autorizada por perfil, publicação e vínculo com o guia; validação de MIME, assinatura, tamanho e referências ao salvar.
+- Configuração `setupGuideImages` e escopo OAuth do Drive documentados; testes de envio, referências, acesso e formatos inválidos.
 - Base de conhecimento com pesquisa por código, título, categoria, palavras-chave e texto, ignorando acentos.
 - Pacote inicial de 23 guias em cinco categorias, importado como rascunho com preservação de edições e reporte de conflitos de código.
 - Leitura com listas numeradas, avisos, referências e links internos; orientações gerais em seção recolhível.
@@ -15,6 +25,8 @@
 - Textos dos módulos substituídos por descrições funcionais; títulos, indicadores e estados vazios simplificados.
 
 ### Fixed
+- Links internos tratados pelo roteador da aplicação para evitar navegação para uma página vazia no iframe do Apps Script, incluindo cards, menu e guias relacionados.
+- Configuração webapp mantida no manifesto local para não ser removida na sincronização: execução como responsável pela implantação e acesso ao domínio Workspace.
 - Entrada `setupSupportFlow` sem sufixo para execução no editor, preservando validação de identidade e domínio. Instruções de configuração atualizadas.
 - Mensagem de acesso diferencia ALLOWED_DOMAINS ausente de domínio não autorizado e orienta a configuração inicial, sem liberar acesso automaticamente.
 
