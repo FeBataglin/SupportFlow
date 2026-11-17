@@ -1,0 +1,30 @@
+[
+  {
+    "code": "KB-0025",
+    "file": "KB-0025-tempo-da-requisicao.png",
+    "caption": "Clique na chamada, abra Timing e registre o tempo total e a maior etapa.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen"
+  },
+  {
+    "code": "KB-0026",
+    "file": "KB-0026-mensagens-do-navegador.png",
+    "caption": "Reconheça a mensagem, registre o endereço e peça análise à equipe responsável.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen"
+  },
+  {
+    "code": "KB-0027",
+    "file": "KB-0027-ligando-chamada-ao-log.png",
+    "caption": "Compare horário, fuso e identificador quando ele existir dos dois lados.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen"
+  },
+  {
+    "code": "KB-0028",
+    "file": "KB-0028-caminho-da-solicitacao-v2.png",
+    "caption": "Exemplo de caminho no PASOE: navegador, Tomcat e execução ABL, banco quando necessário.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen"
+  }
+]

@@ -21,6 +21,7 @@ window.SupportFlowKnowledge = (() => {
   }
   // HTML arbitrário e imagens externas não são interpretados.
   function markdown(text) {
+    if(window.SupportFlowUploads) text=window.SupportFlowUploads.placeImages(text);
     const lines = String(text).replace(/\r\n/g,'\n').split('\n');
     let html = '', list = '';
     function close() { if(list) {html += '</'+list+'>';list='';} }
@@ -54,19 +55,89 @@ window.SupportFlowKnowledge = (() => {
     const title = '<div class="page-heading"><h1>Base de conhecimento</h1></div>';
     const fail = error => { if(isCurrent()) content.innerHTML = title + `<section class="panel"><p role="alert">${esc(error.message || error)}</p><a class="button secondary" target="_self" href="#knowledge">Voltar aos guias</a></section>`; };
     const imageRequests = new Map();
+    const uploads = window.SupportFlowUploads;
+    let restoreDialog=null;
+    function showRemoved(articles) {
+      if(restoreDialog && restoreDialog.isConnected) {restoreDialog.focus();return;}
+      const dialog=document.createElement('dialog');restoreDialog=dialog;dialog.className='guide-batch-dialog';
+      dialog.setAttribute('aria-label','Restaurar guias removidos');
+      dialog.innerHTML=`<h2>Guias removidos</h2><p>Selecione os guias que deseja recuperar. Eles voltarão como Não publicado, mantendo conteúdo e imagens.</p><label class="restore-option"><input type="checkbox" data-all> Selecionar todos</label><div>${articles.map((a,i)=>'<label class="restore-option"><input type="checkbox" data-restore-index="'+i+'"><span>'+esc(a.id)+' — '+esc(a.title)+'</span></label>').join('')}</div><label class="restore-option"><input type="checkbox" data-simplified checked> Usar a versão simplificada nos KB-0025 a KB-0028 quando o texto original não tiver sido editado.</label><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button" data-confirm disabled>Restaurar selecionados</button></div><p role="status" data-status></p>`;
+      const confirm=dialog.querySelector('[data-confirm]'),cancel=dialog.querySelector('[data-cancel]'),status=dialog.querySelector('[data-status]'),all=dialog.querySelector('[data-all]');
+      const boxes=Array.from(dialog.querySelectorAll('[data-restore-index]'));
+      let pending=false;
+      function refresh() {const count=boxes.filter(box=>box.checked).length;confirm.disabled=!count;all.checked=!!boxes.length && count===boxes.length;all.indeterminate=count>0 && count<boxes.length;}
+      boxes.forEach(box=>box.addEventListener('change',refresh));
+      all.addEventListener('change',()=>{boxes.forEach(box=>{box.checked=all.checked;});refresh();});
+      cancel.addEventListener('click',()=>dialog.close());dialog.addEventListener('cancel',event=>{if(pending) event.preventDefault();});
+      dialog.addEventListener('close',()=>{dialog.remove();if(restoreDialog===dialog) restoreDialog=null;});
+      confirm.addEventListener('click',async()=>{
+        if(pending) return;
+        const selected=boxes.filter(box=>box.checked).map(box=>articles[Number(box.dataset.restoreIndex)]);
+        if(!selected.length) return;
+        const useSimplified=dialog.querySelector('[data-simplified]').checked;
+        pending=true;dialog.querySelectorAll('input,button').forEach(control=>{control.disabled=true;});status.textContent='Restaurando…';
+        try {
+          await rpc('restoreGuides',{confirm:true,useSimplified,guides:selected.map(a=>({id:a.id,updatedAt:a.updatedAt}))});
+          dialog.close();if(isCurrent()) await onChange();
+        } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
+        finally {pending=false;dialog.querySelectorAll('input,button').forEach(control=>{control.disabled=false;});refresh();}
+      });
+      content.append(dialog);dialog.showModal();cancel.focus();
+    }
+    function confirmSimplify(articles) {
+      const dialog=document.createElement('dialog');dialog.className='guide-batch-dialog';
+      dialog.setAttribute('aria-label','Simplificar textos dos guias');
+      dialog.innerHTML=`<h2>Atualizar para textos mais simples?</h2><p>Estes guias receberão a revisão 1.1, com passos mais curtos. Imagens e status de publicação serão preservados. Guias com edições próprias não entram nessa seleção.</p><ul>${articles.map(a=>'<li>'+esc(a.id)+' — '+esc(a.title)+'</li>').join('')}</ul><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button" data-confirm>Atualizar textos</button></div><p role="status" data-status></p>`;
+      const confirm=dialog.querySelector('[data-confirm]'),cancel=dialog.querySelector('[data-cancel]'),status=dialog.querySelector('[data-status]');
+      let pending=false;
+      cancel.addEventListener('click',()=>dialog.close());dialog.addEventListener('cancel',event=>{if(pending) event.preventDefault();});
+      dialog.addEventListener('close',()=>dialog.remove());
+      confirm.addEventListener('click',async()=>{
+        pending=true;confirm.disabled=true;cancel.disabled=true;status.textContent='Atualizando textos…';
+        try {
+          await rpc('simplifyGuides',{confirm:true,guides:articles.map(a=>({id:a.id,updatedAt:a.updatedAt}))});
+          dialog.close();if(isCurrent()) await onChange();
+        } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
+        finally {pending=false;confirm.disabled=false;cancel.disabled=false;}
+      });
+      content.append(dialog);dialog.showModal();cancel.focus();
+    }
+    function confirmPublish(articles) {
+      const dialog=document.createElement('dialog');dialog.className='guide-batch-dialog';
+      dialog.setAttribute('aria-label','Confirmar publicação');
+      dialog.innerHTML=`<h2>Publicar ${articles.length} guia(s)?</h2><p>Os guias abaixo ficarão disponíveis ao Atendimento. Confirme após revisar o conteúdo.</p><ul>${articles.map(a=>'<li>'+esc(a.id)+' — '+esc(a.title)+'</li>').join('')}</ul><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button" data-confirm>Publicar guias</button></div><p role="status" data-status></p>`;
+      const confirm=dialog.querySelector('[data-confirm]'),cancel=dialog.querySelector('[data-cancel]'),status=dialog.querySelector('[data-status]');
+      let pending=false;
+      cancel.addEventListener('click',()=>dialog.close());
+      dialog.addEventListener('cancel',event=>{if(pending) event.preventDefault();});
+      dialog.addEventListener('close',()=>dialog.remove());
+      confirm.addEventListener('click',async()=>{
+        pending=true;confirm.disabled=true;cancel.disabled=true;status.textContent='Publicando…';
+        try {
+          await rpc('publishGuides',{confirm:true,guides:articles.map(a=>({id:a.id,updatedAt:a.updatedAt}))});
+          dialog.close();if(isCurrent()) await onChange();
+        } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
+        finally {pending=false;confirm.disabled=false;cancel.disabled=false;}
+      });
+      content.append(dialog);dialog.showModal();cancel.focus();
+    }
     function confirmRemove(article) {
-      const dialog = document.createElement('dialog');dialog.className='guide-delete-dialog';
+      const bulk=Array.isArray(article),articles=bulk ? article : [article];
+      if(!articles.length) return;
+      const dialog = document.createElement('dialog');dialog.className=bulk ? 'guide-batch-dialog' : 'guide-delete-dialog';
       dialog.setAttribute('aria-label','Confirmar remoção do guia');
-      dialog.innerHTML=`<h2>Remover ${esc(article.id)}?</h2><p>${esc(article.title)}</p><p>O guia deixará de aparecer na base e não será recriado ao importar novamente. As imagens no Drive serão preservadas.</p><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button danger" data-confirm>Remover guia</button></div><p role="status" data-status></p>`;
+      dialog.innerHTML=`<h2>${bulk ? 'Remover '+articles.length+' guia(s)?' : 'Remover '+esc(article.id)+'?'}</h2>${bulk ? '<ul>'+articles.map(a=>'<li>'+esc(a.id)+' — '+esc(a.title)+'</li>').join('')+'</ul>' : '<p>'+esc(article.title)+'</p>'}<p>Os guias selecionados sairão da base e poderão ser recuperados em Removidos. As imagens no Drive serão preservadas.</p><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button danger" data-confirm>${bulk ? 'Remover selecionados' : 'Remover guia'}</button></div><p role="status" data-status></p>`;
       const confirm=dialog.querySelector('[data-confirm]'),cancel=dialog.querySelector('[data-cancel]'),status=dialog.querySelector('[data-status]');
       let pending=false;
       cancel.addEventListener('click',() => dialog.close());
       dialog.addEventListener('cancel',event => {if(pending) event.preventDefault();});
       dialog.addEventListener('close',() => dialog.remove());
       confirm.addEventListener('click',async () => {
+        if(pending) return;
         pending=true;confirm.disabled=true;cancel.disabled=true;status.textContent='Removendo guia…';
         try {
-          await rpc('deleteGuide',{id:article.id,updatedAt:article.updatedAt,confirmId:article.id});
+          if(bulk) await rpc('deleteGuides',{confirm:true,guides:articles.map(a=>({id:a.id,updatedAt:a.updatedAt}))});
+          else await rpc('deleteGuide',{id:article.id,updatedAt:article.updatedAt,confirmId:article.id});
           dialog.close();
           if(isCurrent()) {location.hash='#knowledge';await onChange();}
         } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
@@ -117,31 +188,49 @@ window.SupportFlowKnowledge = (() => {
     }
     function editor(article) {
       content.innerHTML = `<a href="${href(article.id)}" target="_self" id="cancel-edit" class="text-button">← Voltar ao guia</a><div class="page-heading" style="margin-top:20px"><h1>Editar ${esc(article.id)}</h1></div>
-        <form id="guide-form" class="panel guide-editor"><label>Título<input name="title" required maxlength="250" value="${esc(article.title)}"></label><div class="guide-editor-row"><label>Categoria<input name="category" required maxlength="100" value="${esc(article.category)}"></label><label>Revisão<input name="revision" maxlength="50" value="${esc(article.revision)}"></label><label>Status<select name="status"><option value="draft"${article.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${article.status === 'published' ? ' selected' : ''}>Publicado</option></select></label></div><label>Palavras-chave<input name="keywords" maxlength="1000" value="${esc(article.keywords)}"></label><label>Conteúdo em Markdown<textarea name="markdown" rows="26" maxlength="35000" required>${esc(article.markdown)}</textarea></label><p class="editor-help">Use ### para títulos, números para passos e **Atenção:** para avisos. Códigos KB viram links. Para incluir uma imagem, posicione o cursor em uma linha entre os parágrafos e use o envio abaixo.</p><fieldset class="guide-image-upload"><legend>Adicionar imagem</legend><label>Arquivo (PNG, JPEG ou WebP, até 2 MB)<input id="guide-image-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label>Legenda e descrição da imagem<input id="guide-image-caption" maxlength="200" placeholder="Ex.: Requisição com status 500 na aba Network"></label><p class="editor-help">Envie apenas exemplos ou capturas autorizadas, sem credenciais ou dados de clientes. O arquivo é enviado ao Drive ao clicar no botão; depois, salve o guia.</p><button type="button" class="button secondary" id="upload-guide-image">Enviar e inserir imagem</button><p id="image-upload-status" role="status"></p></fieldset><div class="guide-actions"><button class="button" type="submit">Salvar alterações</button><button class="button secondary" id="preview-guide" type="button">Pré-visualizar</button></div><p id="guide-status" role="status"></p><div id="guide-preview" class="guide-body" hidden></div></form>`;
+        <form id="guide-form" class="panel guide-editor">
+          <label>Título<input name="title" required maxlength="250" value="${esc(article.title)}"></label>
+          <div class="guide-editor-row"><label>Categoria<input name="category" required maxlength="100" value="${esc(article.category)}"></label><label>Revisão<input name="revision" maxlength="50" value="${esc(article.revision)}"></label><label>Status<select name="status"><option value="draft"${article.status === 'draft' ? ' selected' : ''}>Não publicado</option><option value="published"${article.status === 'published' ? ' selected' : ''}>Publicado</option></select></label></div>
+          <label>Palavras-chave<input name="keywords" maxlength="1000" value="${esc(article.keywords)}"></label>
+          <label>Conteúdo em Markdown<textarea name="markdown" rows="26" maxlength="35000" required>${esc(uploads.placeImages(article.markdown))}</textarea></label>
+          <p class="editor-help">Use ### para títulos, números para passos e **Atenção:** para avisos. Para incluir imagens, posicione o cursor entre os parágrafos e use o envio abaixo.</p>
+          <fieldset class="guide-image-upload"><legend>Adicionar imagens a este guia</legend>
+            <label>Arquivos (PNG, JPEG ou WebP, até 2 MB cada)<input id="guide-image-file" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
+            <div id="guide-image-selection"></div>
+            <p class="editor-help">Selecione várias imagens e ajuste as legendas. Elas serão inseridas na ordem selecionada. Salve o guia ao terminar.</p>
+            <button type="button" class="button secondary" id="upload-guide-image">Enviar e inserir imagens</button><p id="image-upload-status" role="status"></p>
+          </fieldset>
+          <div class="guide-actions"><button class="button" type="submit">Salvar alterações</button><button class="button secondary" id="preview-guide" type="button">Pré-visualizar</button></div><p id="guide-status" role="status"></p><div id="guide-preview" class="guide-body" hidden></div>
+        </form>`;
       const form = document.getElementById('guide-form');
+      let imageEntries=[];
+      const fileInput=document.getElementById('guide-image-file'),selection=document.getElementById('guide-image-selection');
+      fileInput.addEventListener('change',()=>{
+        imageEntries=Array.from(fileInput.files).map(file=>({file,guideId:article.id,caption:uploads.defaultCaption(file)}));
+        selection.innerHTML=uploads.selectionHtml(imageEntries);
+        document.getElementById('upload-guide-image').textContent='Enviar e inserir imagens';
+      });
       document.getElementById('cancel-edit').addEventListener('click',event => {event.preventDefault();read(article);});
       document.getElementById('upload-guide-image').addEventListener('click',async () => {
         const button=document.getElementById('upload-guide-image'), status=document.getElementById('image-upload-status');
-        const fileInput=document.getElementById('guide-image-file'), file=fileInput.files[0];
-        const caption=document.getElementById('guide-image-caption').value.trim();
         const textarea=form.elements.markdown, save=form.querySelector('[type=submit]');
-        if(!file || !['image/png','image/jpeg','image/webp'].includes(file.type) || file.size>2*1024*1024 || file.size===0) {
-          status.textContent='Selecione uma imagem PNG, JPEG ou WebP de até 2 MB.';return;
-        }
-        if(!caption || /[\]\r\n]/.test(caption)) {status.textContent='Preencha uma legenda sem quebras de linha ou colchete de fechamento.';return;}
-        const start=textarea.selectionStart,end=textarea.selectionEnd;
-        button.disabled=true;save.disabled=true;textarea.disabled=true;status.textContent='Enviando imagem…';
+        if(!imageEntries.length || imageEntries.length>12) {status.textContent='Selecione de 1 a 12 imagens para este guia. Para vários guias, use Enviar imagens em lote na listagem.';return;}
+        uploads.readCaptions(selection,imageEntries);
+        let start=textarea.selectionStart,end=textarea.selectionEnd;
+        button.disabled=true;save.disabled=true;textarea.disabled=true;fileInput.disabled=true;
+        selection.querySelectorAll('input').forEach(input=>{input.disabled=true;});
         try {
-          const data=await new Promise((resolve,reject) => {
-            const reader=new FileReader();reader.onload=() => resolve(reader.result);reader.onerror=() => reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file);
+          const result=await uploads.sendQueue({entries:imageEntries,rpc,isActive:()=>isCurrent() && content.contains(form),
+            beforeUpload:()=>{if(uploads.imageCount(textarea.value)>=12) throw new Error('Use no máximo 12 imagens por guia.');if(textarea.value.length>34500) throw new Error('Reduza o texto antes de inserir mais imagens.');},
+            onProgress:(entry,i)=>{uploads.progress(selection,entry,i);status.textContent=imageEntries.filter(e=>e.done).length+' de '+imageEntries.length+' inserida(s).';},
+            onSuccess:(entry,token)=>{textarea.setRangeText(token,start,end,'end');start=textarea.selectionEnd;end=start;}
           });
-          const result=await rpc('uploadGuideImage',{guideId:article.id,mimeType:file.type,base64:String(data).split(',')[1]});
           if(!isCurrent() || !content.contains(form)) return;
-          const token='\n\n!['+caption+'](sf-image:'+result.id+')\n\n';
-          textarea.setRangeText(token,start,end,'end');textarea.disabled=false;textarea.focus();
-          status.textContent='Imagem inserida. Salve as alterações para incluí-la no guia.';fileInput.value='';
+          status.textContent=result.succeeded+' inserida(s); '+result.failed+' pendente(s). Salve as alterações do guia.';
+          button.textContent=result.failed ? 'Tentar restantes' : 'Enviar e inserir imagens';
+          if(!result.failed) {fileInput.value='';imageEntries=[];selection.innerHTML='';}
         } catch(error) {if(isCurrent() && content.contains(form)) status.textContent=error.message || String(error);}
-        finally {button.disabled=false;save.disabled=false;textarea.disabled=false;}
+        finally {button.disabled=false;save.disabled=false;textarea.disabled=false;fileInput.disabled=false;selection.querySelectorAll('[data-caption]').forEach(input=>{input.disabled=!!imageEntries[Number(input.dataset.caption)]?.done;});}
       });
       document.getElementById('preview-guide').addEventListener('click',() => {
         const preview = document.getElementById('guide-preview');
@@ -162,8 +251,9 @@ window.SupportFlowKnowledge = (() => {
       });
     }
     function read(article) {
-      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<div class="guide-actions-right"><button id="edit-guide" class="button secondary">Editar guia</button><button id="remove-guide" class="button danger">Remover guia</button></div>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Rascunho · revisão pendente'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Rascunho visível apenas à Administração. Revise o conteúdo antes de publicar.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
+      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<div class="guide-actions-right">'+(article.status === 'draft' ? '<button id="publish-guide" class="button">Publicar guia</button>' : '')+'<button id="edit-guide" class="button secondary">Editar guia</button><button id="remove-guide" class="button danger">Remover guia</button></div>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Não publicado'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Este guia ainda não está disponível ao Atendimento.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
       if(admin) {
+        if(article.status === 'draft') document.getElementById('publish-guide').addEventListener('click',()=>confirmPublish([article]));
         document.getElementById('edit-guide').addEventListener('click',() => editor(article));
         document.getElementById('remove-guide').addEventListener('click',() => confirmRemove(article));
       }
@@ -172,9 +262,39 @@ window.SupportFlowKnowledge = (() => {
     async function list() {
       const data = await rpc('listGuides',query);
       if(!isCurrent()) return;
-      content.innerHTML = title + (admin ? '<div class="guide-actions"><p>Revise os rascunhos e publique os guias aprovados.</p><button class="button secondary" id="import-guides">Importar 23 guias iniciais</button></div><p id="import-status" role="status"></p>' : '') +
-        `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Rascunho</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button></form>
-        <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p><section class="guide-list">${data.articles.length ? data.articles.map((a,i) => `<div class="panel guide-list-row"><a class="guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Rascunho')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a>${admin ? '<button type="button" class="button danger remove-guide" data-index="'+i+'" aria-label="Remover '+esc(a.id)+'">Remover</button>' : ''}</div>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Importe os guias iniciais ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
+      const drafts=data.articles.filter(a=>a.status==='draft'),missing=data.initialImport?.missing || 0,updates=data.simpleUpdates || [],removed=data.removedGuides || [];
+      const importLabel=data.initialImport?.total===missing ? 'Importar '+missing+' guias iniciais' : 'Importar '+missing+' guia(s) restante(s)';
+      content.innerHTML = title + (admin ? `<div class="guide-actions"><p>${data.summary.total} cadastrado(s) · ${data.summary.published} publicado(s) · ${data.summary.drafts} não publicado(s)</p><div class="guide-actions-right">${missing ? '<button class="button secondary" id="import-guides">'+importLabel+'</button>' : ''}${removed.length ? '<button class="button secondary" id="removed-guides">Removidos ('+removed.length+')</button>' : ''}${updates.length ? '<button class="button secondary" id="simplify-guides">Simplificar '+updates.length+' guia(s)</button>' : ''}${data.summary.total ? '<button class="button secondary" id="batch-images">Enviar imagens em lote</button>' : ''}${drafts.length ? '<button class="button" id="publish-guides">Publicar '+drafts.length+' guia(s)</button>' : ''}</div></div><p id="import-status" role="status"></p>` : '') +
+        `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Não publicado</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button></form>
+        <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p>
+        ${admin && data.articles.length ? '<div class="guide-selection"><label><input type="checkbox" id="select-all-guides"> Selecionar todos os resultados</label><span id="guide-selection-count" role="status">0 selecionados</span><button type="button" class="button danger" id="remove-selected-guides" disabled>Remover selecionados</button></div>' : ''}
+        <section class="guide-list">${data.articles.length ? data.articles.map((a,i) => `<div class="panel guide-list-row">${admin ? '<input type="checkbox" class="guide-select" data-select-guide="'+i+'" aria-label="Selecionar '+esc(a.id)+'">' : ''}<a class="guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Não publicado')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a>${admin ? '<button type="button" class="button danger remove-guide" data-index="'+i+'" aria-label="Remover '+esc(a.id)+'">Remover</button>' : ''}</div>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Cadastre os guias iniciais se disponíveis ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
+      if(admin && data.articles.length) {
+        const boxes=Array.from(content.querySelectorAll('[data-select-guide]')),all=document.getElementById('select-all-guides'),remove=document.getElementById('remove-selected-guides'),count=document.getElementById('guide-selection-count');
+        function selected() {return boxes.filter(box=>box.checked).map(box=>data.articles[Number(box.dataset.selectGuide)]);}
+        function refreshSelection() {
+          const size=selected().length;
+          count.textContent=size+' selecionado(s)'+(size>50 ? ' · máximo 50 por operação' : '');remove.disabled=!size || size>50;
+          all.checked=!!boxes.length && size===boxes.length;all.indeterminate=size>0 && size<boxes.length;
+        }
+        boxes.forEach(box=>box.addEventListener('change',refreshSelection));
+        all.addEventListener('change',()=>{boxes.forEach(box=>{box.checked=all.checked;});refreshSelection();});
+        remove.addEventListener('click',()=>{const articles=selected();if(articles.length && articles.length<=50) confirmRemove(articles);});
+      }
+      if(admin && drafts.length) document.getElementById('publish-guides').addEventListener('click',()=>confirmPublish(drafts));
+      if(admin && updates.length) document.getElementById('simplify-guides').addEventListener('click',()=>confirmSimplify(updates));
+      if(admin && removed.length) document.getElementById('removed-guides').addEventListener('click',()=>showRemoved(removed));
+      if(admin && data.summary.total) document.getElementById('batch-images').addEventListener('click',async event=>{
+        const button=event.currentTarget;
+        if(button.disabled) return;
+        button.disabled=true;
+        try {await uploads.openBatch({rpc,content,isCurrent,onChange,onComplete:message=>{
+          const notification=document.getElementById('notification');notification.textContent=message;
+          setTimeout(()=>{notification.textContent='';},5000);
+        }});}
+        catch(error) {if(isCurrent()) document.getElementById('import-status').textContent=error.message || String(error);}
+        finally {button.disabled=false;}
+      });
       if(admin) content.querySelectorAll('.remove-guide').forEach(button => button.addEventListener('click',() => confirmRemove(data.articles[Number(button.dataset.index)])));
       const form = document.getElementById('guide-search');
       form.addEventListener('submit',async event => {
@@ -182,7 +302,7 @@ window.SupportFlowKnowledge = (() => {
         const button=form.querySelector('button');button.disabled=true;
         try {await list();} catch(error) {fail(error);} finally {button.disabled=false;}
       });
-      if(admin) document.getElementById('import-guides').addEventListener('click',async event => {
+      if(admin && missing) document.getElementById('import-guides').addEventListener('click',async event => {
         const button = event.currentTarget, status = document.getElementById('import-status');button.disabled=true;status.textContent='Importando rascunhos…';
         try {
           const result = await rpc('importInitialGuides');

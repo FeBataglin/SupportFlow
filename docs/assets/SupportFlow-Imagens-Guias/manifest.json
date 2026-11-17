@@ -1,0 +1,164 @@
+[
+  {
+    "code": "KB-0001",
+    "title": "Abrindo o DevTools",
+    "file": "KB-0001-browser-devtools.png",
+    "caption": "Abra o DevTools e localize Console e Network.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0002",
+    "title": "Lendo erros no Console",
+    "file": "KB-0002-console-erros.png",
+    "caption": "Identifique mensagem, pilha e horário do erro.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0003",
+    "title": "Analisando uma requisição",
+    "file": "KB-0003-network-requisicao.png",
+    "caption": "Localize a requisição e registre método, status e duração.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0004",
+    "title": "Exportando HAR",
+    "file": "KB-0004-exportar-har.png",
+    "caption": "Exporte o HAR sanitizado e revise antes de compartilhar.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0005",
+    "title": "Testando sem cache",
+    "file": "KB-0005-cache-navegador.png",
+    "caption": "Compare o comportamento após recarga e teste sem cache.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0006",
+    "title": "Comparando sessões do navegador",
+    "file": "KB-0006-janela-anonima.png",
+    "caption": "Compare a mesma operação na janela normal e anônima.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0007",
+    "title": "Identificando falhas de carregamento",
+    "file": "KB-0007-componentes-v2.png",
+    "caption": "Confira arquivos JS/CSS com falha e chamadas pendentes.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0008",
+    "title": "Interpretando status HTTP",
+    "file": "KB-0008-status-http.png",
+    "caption": "Use o status para escolher a próxima verificação.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0009",
+    "title": "Comparando Payload e Response",
+    "file": "KB-0009-payload-response.png",
+    "caption": "Compare dados da tela, Payload e Response.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0010",
+    "title": "Investigando autenticação",
+    "file": "KB-0010-autenticacao.png",
+    "caption": "Correlacione status 401/403 com sessão e permissões.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0011",
+    "title": "Localizando o endpoint",
+    "file": "KB-0011-endpoint.png",
+    "caption": "Registre endereço, método, status e horário da chamada.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0012",
+    "title": "Consultando API no Postman",
+    "file": "KB-0012-postman.png",
+    "caption": "Exemplo de consulta GET em ambiente de teste autorizado.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0013",
+    "title": "Selecionando logs do agente",
+    "file": "KB-0013-logs-pasoe.png",
+    "caption": "Confirme instância e horário antes de coletar o trecho do log.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0014",
+    "title": "Lendo um erro Progress",
+    "file": "KB-0014-erro-progress.png",
+    "caption": "Registre mensagem, programa, horário e contexto do erro.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0015",
+    "title": "Entendendo a busca no PROPATH",
+    "file": "KB-0015-propath.png",
+    "caption": "Exemplo conceitual de precedência na busca de um objeto.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0016",
+    "title": "Registrando o ambiente",
+    "file": "KB-0016-informacoes-ambiente.png",
+    "caption": "Organize os dados de ambiente que acompanham o chamado.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0017",
+    "title": "Comparando versões",
+    "file": "KB-0017-versoes-releases.png",
+    "caption": "Compare os dados do ambiente com as instruções da correção.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  },
+  {
+    "code": "KB-0018",
+    "title": "Identificando objeto desatualizado",
+    "file": "KB-0018-objeto-desatualizado.png",
+    "caption": "Compare o objeto localizado com o objeto recebido na correção.",
+    "type": "illustrative-simulation",
+    "generator": "imagegen",
+    "maxUploadBytes": 2097152
+  }
+]

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(__dirname,'..');
+const CATALOG_SIZE = 28;
 
 function fixture() {
   const properties = {ALLOWED_DOMAINS:'example.com', INITIAL_ADMIN_EMAIL:'admin@example.com'};
@@ -53,7 +54,7 @@ function fixture() {
       getFileById:id=>{if(!driveFiles[id]) throw new Error('Arquivo indisponível');return driveFiles[id];}
     }, Date, console
   });
-  for(const file of ['Auth.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','Knowledge.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
+  for(const file of ['Auth.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','GuideUpdates.gs','Knowledge.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
   return {c:context,properties,tables,driveFiles,driveFolders,setEmail:value => {email=value;},get creates(){return creates;},get locked(){return locked;}};
 }
 
@@ -158,23 +159,23 @@ test('protege texto contra fórmulas e valida sintaxe do frontend',() => {
   JSON.parse(fs.readFileSync(path.join(root,'appsscript.json'),'utf8'));
 });
 
-test('importa 23 rascunhos em cinco categorias, sem instruções editoriais, e é idempotente',() => {
+test('importa o catálogo completo em cinco categorias sem instruções editoriais e é idempotente',() => {
   const f=fixture();f.c.setupSupportFlow();
-  assert.equal(f.c.importInitialGuides().imported,23);
+  assert.equal(f.c.importInitialGuides().imported,CATALOG_SIZE);
   assert.equal(f.c.rows_('Categories').length,5);
-  assert.equal(f.c.rows_('Articles').length,23);
+  assert.equal(f.c.rows_('Articles').length,CATALOG_SIZE);
   assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
   const seeds=f.c.initialGuides_();
-  assert.equal(new Set(seeds.map(s=>s.id)).size,23);
+  assert.equal(new Set(seeds.map(s=>s.id)).size,CATALOG_SIZE);
   for(const seed of seeds) {
     assert.match(seed.markdown,/### Como fazer/);
     assert.match(seed.markdown,/\*\*Atenção:\*\*/);
     assert.doesNotMatch(seed.markdown,/Instruções para o Codex|## Catálogo|Referências técnicas consultadas/);
     for(const related of seed.markdown.match(/KB-\d{4}/g)||[]) assert.ok(seeds.some(s=>s.id===related),related);
   }
-  const again=f.c.importInitialGuides();assert.equal(again.imported,0);assert.equal(again.skipped.length,23);
+  const again=f.c.importInitialGuides();assert.equal(again.imported,0);assert.equal(again.skipped.length,CATALOG_SIZE);
   assert.equal(f.c.rows_('Categories').length,5);
-  assert.equal(f.c.rows_('Articles').length,23);
+  assert.equal(f.c.rows_('Articles').length,CATALOG_SIZE);
   assert.equal(f.c.getGuide('KB-0023').markdown.includes('Modelo de mensagem ao cliente'),true);
 });
 
@@ -183,7 +184,9 @@ test('pesquisa por código, palavras-chave, categoria, texto e acentos',() => {
   for(const query of ['F12','500','PROPATH','objeto desatualizado','autenticacao','KB-0021']) {
     assert.ok(f.c.listGuides({query}).articles.length>0,query);
   }
-  assert.equal(f.c.listGuides({category:'APIs e comunicação'}).articles.length,5);
+  const apiGuides=f.c.listGuides({category:'APIs e comunicação'}).articles;
+  assert.equal(apiGuides.map(a=>a.id).join(','),f.c.initialGuides_().filter(a=>a.category==='APIs e comunicação').map(a=>a.id).join(','));
+  assert.ok(apiGuides.every(a=>a.category==='APIs e comunicação'));
   assert.equal(f.c.listGuides({query:'não-existe-123'}).articles.length,0);
 });
 
@@ -222,7 +225,7 @@ test('edição preservada na reimportação e gravação concorrente rejeitada',
 test('conflito de código preserva registro e validação impede conteúdo inválido',() => {
   const f=fixture();f.c.setupSupportFlow();
   f.c.writeRow_('Articles',{id:'KB-0001',title:'Outro artigo',content:'não alterar',status:'published'});
-  const result=f.c.importInitialGuides();assert.equal(result.imported,22);
+  const result=f.c.importInitialGuides();assert.equal(result.imported,CATALOG_SIZE-1);
   assert.equal(result.conflicts[0],'KB-0001');assert.equal(f.c.getGuide('KB-0001').markdown,'não alterar');
   const guide=f.c.getGuide('KB-0002');
   assert.throws(()=>f.c.saveGuide({...guide,status:'approved'}),/Status inválido/);
@@ -320,7 +323,7 @@ test('admin remove guia da listagem, pesquisa e dashboard sem recriá-lo na impo
   const current=f.c.getGuide('KB-0001');
   assert.equal(f.c.getBootstrap().dashboard.publishedArticles,1);
   assert.equal(f.c.deleteGuide({id:current.id,updatedAt:current.updatedAt,confirmId:current.id}).ok,true);
-  assert.equal(f.c.listGuides({}).articles.length,22);
+  assert.equal(f.c.listGuides({}).articles.length,CATALOG_SIZE-1);
   assert.equal(f.c.listGuides({query:'KB-0001'}).articles.some(a=>a.id==='KB-0001'),false);
   assert.equal(f.c.listGuides({status:'deleted'}).articles.length,0);
   assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
@@ -329,7 +332,7 @@ test('admin remove guia da listagem, pesquisa e dashboard sem recriá-lo na impo
   const record=f.c.rows_('Articles').find(a=>a.id==='KB-0001');
   assert.equal(record.status,'deleted');assert.ok(record.content.includes(original.markdown.slice(0,30)));
   assert.equal(f.c.importInitialGuides().imported,0);
-  assert.equal(f.c.listGuides({}).articles.length,22);
+  assert.equal(f.c.listGuides({}).articles.length,CATALOG_SIZE-1);
   assert.equal(f.c.getGuide('KB-0002').title,'Identificando erros no Console');
   assert.ok(f.c.rows_('Audit').some(a=>a.action==='GUIDE_DELETE_REQUEST'));
   assert.equal(f.locked,false);
@@ -346,7 +349,7 @@ test('remoção exige admin, confirmação e versão atual, sem mutação em rej
   f.c.saveUser({email:'support@example.com',role:'support',active:true});
   f.setEmail('support@example.com');
   assert.throws(()=>f.c.deleteGuide({id:old.id,updatedAt:old.updatedAt,confirmId:old.id}),/administração/);
-  f.setEmail('admin@example.com');assert.equal(f.c.listGuides({}).articles.length,23);
+  f.setEmail('admin@example.com');assert.equal(f.c.listGuides({}).articles.length,CATALOG_SIZE);
 });
 
 test('remoção bloqueia imagens e preserva arquivos do Drive',() => {
@@ -359,4 +362,215 @@ test('remoção bloqueia imagens e preserva arquivos do Drive',() => {
   assert.equal(Object.keys(f.driveFiles).length,1);
   assert.equal(f.c.rows_('GuideImages').length,1);
   assert.throws(()=>f.c.deleteGuide({id:guide.id,updatedAt:guide.updatedAt,confirmId:guide.id}),/já removido/);
+});
+
+test('estado da importação considera toda a base, inclusive removidos, sem depender da pesquisa',()=>{
+  const f=fixture();f.c.setupSupportFlow();
+  assert.equal(f.c.listGuides({}).initialImport.missing,CATALOG_SIZE);
+  f.c.importInitialGuides();
+  const guide=f.c.getGuide('KB-0001');f.c.deleteGuide({id:guide.id,confirmId:guide.id,updatedAt:guide.updatedAt});
+  const data=f.c.listGuides({query:'sem-resultado-123'});
+  assert.equal(data.articles.length,0);assert.equal(data.summary.total,CATALOG_SIZE-1);assert.equal(data.initialImport.missing,0);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.equal(f.c.listGuides({}).initialImport,null);assert.equal(f.c.listGuides({}).summary.total,0);
+});
+
+test('publicação em lote exige confirmação e libera somente a seleção',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const selected=['KB-0001','KB-0002'].map(id=>f.c.getGuide(id));
+  assert.throws(()=>f.c.publishGuides({guides:selected}),/Confirme/);
+  assert.equal(f.c.publishGuides({confirm:true,guides:selected}).published,2);
+  assert.equal(f.c.getBootstrap().dashboard.publishedArticles,2);
+  assert.equal(f.c.getGuide('KB-0003').status,'draft');
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.equal(f.c.listGuides({}).articles.length,2);
+  assert.throws(()=>f.c.publishGuides({confirm:true,guides:selected}),/administração/);
+});
+
+test('publicação em lote valida todas as versões e estados antes de gravar',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const first=f.c.getGuide('KB-0001'),second=f.c.getGuide('KB-0002');
+  f.c.saveGuide({...second,title:'Nova revisão'});
+  assert.throws(()=>f.c.publishGuides({confirm:true,guides:[first,second]}),/alterado/);
+  assert.equal(f.c.getGuide(first.id).status,'draft');assert.equal(f.locked,false);
+  assert.throws(()=>f.c.publishGuides({confirm:true,guides:[first,first]}),/inválida/);
+  f.c.deleteGuide({id:first.id,confirmId:first.id,updatedAt:first.updatedAt});
+  assert.throws(()=>f.c.publishGuides({confirm:true,guides:[first]}),/rascunho/);
+  assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
+});
+
+test('catálogo atualizado acrescenta apenas ausentes em bases com 23 ou 24 guias e preserva edições, imagens e remoções',()=>{
+  for (const baseline of [23,24]) {
+    const f=fixture();f.c.setupSupportFlow();
+    const currentCatalog=f.c.initialGuides_;
+    const isExisting=a=>Number(a.id.slice(3))<=baseline;
+    f.c.initialGuides_=()=>currentCatalog().filter(isExisting);
+    assert.equal(f.c.importInitialGuides().imported,baseline);
+    const guide=f.c.getGuide('KB-0001');
+    f.c.saveGuide({...guide,title:'Conteúdo já revisado pelo usuário',status:'published'});
+    const removed=f.c.getGuide('KB-0002');f.c.deleteGuide({id:removed.id,confirmId:removed.id,updatedAt:removed.updatedAt});
+    const image=f.c.uploadGuideImage({guideId:'KB-0003',mimeType:'image/png',base64:testPng});
+    const illustrated=f.c.getGuide('KB-0003');f.c.saveGuide({...illustrated,markdown:illustrated.markdown+'\n\n![Exemplo](sf-image:'+image.id+')'});
+    const before=JSON.stringify(f.c.rows_('Articles').filter(isExisting));
+    const imagesBefore=JSON.stringify(f.c.rows_('GuideImages'));
+    f.c.initialGuides_=currentCatalog;
+    assert.equal(f.c.listGuides({}).initialImport.missing,CATALOG_SIZE-baseline);
+    const result=f.c.importInitialGuides();
+    assert.equal(result.imported,CATALOG_SIZE-baseline);assert.equal(result.skipped.length,baseline);
+    assert.equal(JSON.stringify(f.c.rows_('Articles').filter(isExisting)),before);
+    assert.equal(JSON.stringify(f.c.rows_('GuideImages')),imagesBefore);assert.equal(Object.keys(f.driveFiles).length,1);
+    for(let n=baseline+1;n<=CATALOG_SIZE;n++) assert.equal(f.c.getGuide('KB-'+String(n).padStart(4,'0')).status,'draft');
+    assert.equal(f.c.listGuides({}).initialImport.missing,0);
+    assert.equal(f.c.importInitialGuides().imported,0);
+  }
+});
+
+test('novos guias são encontrados por termos do atendimento e publicam com links válidos',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  for(const [id,term] of [['KB-0025','timeout Timing'],['KB-0026','CORS certificado'],['KB-0027','correlação fuso'],['KB-0028','camadas PASOE']]) {
+    assert.ok(f.c.listGuides({query:term}).articles.some(a=>a.id===id),id+' / '+term);
+  }
+  const guides=['KB-0025','KB-0026','KB-0027','KB-0028'].map(id=>f.c.getGuide(id));
+  assert.equal(f.c.publishGuides({confirm:true,guides}).published,4);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.equal(f.c.listGuides({}).articles.length,4);
+  for(const guide of guides) assert.equal(f.c.getGuide(guide.id).status,'published');
+});
+
+function restoreOriginalEditions(f) {
+  f.c.importInitialGuides();
+  for(const old of f.c.previousGuideEditions_()) {
+    const record=f.c.rows_('Articles').find(a=>a.id===old.id);
+    record.content=JSON.stringify({format:'supportflow-guide-v1',sourceCode:old.id,keywords:old.keywords,revision:old.revision,markdown:old.markdown});
+    f.c.writeRow_('Articles',record,f.c.rowNumberForId_('Articles',old.id));
+  }
+}
+
+test('simplificação atualiza apenas edições originais, preservando imagem e publicação',()=>{
+  const f=fixture();f.c.setupSupportFlow();restoreOriginalEditions(f);
+  const image=f.c.uploadGuideImage({guideId:'KB-0025',mimeType:'image/png',base64:testPng});
+  const old=f.c.getGuide('KB-0025');
+  f.c.saveGuide({...old,status:'published',markdown:old.markdown+'\n\n![Exemplo enviado](sf-image:'+image.id+')'});
+  const filesBefore=JSON.stringify(f.c.rows_('GuideImages'));
+  const candidates=f.c.listGuides({}).simpleUpdates;
+  assert.equal(candidates.length,4);
+  assert.throws(()=>f.c.simplifyGuides({guides:candidates}),/Confirme/);
+  assert.equal(f.c.simplifyGuides({confirm:true,guides:candidates}).updated,4);
+  const updated=f.c.getGuide('KB-0025');
+  assert.equal(updated.revision,'1.1');assert.equal(updated.status,'published');
+  assert.match(updated.markdown,new RegExp('sf-image:'+image.id));
+  assert.ok(updated.markdown.length<old.markdown.length);
+  assert.equal(JSON.stringify(f.c.rows_('GuideImages')),filesBefore);
+  assert.equal(Object.keys(f.driveFiles).length,1);
+  assert.equal(f.c.listGuides({}).simpleUpdates.length,0);
+  assert.equal(f.c.getGuide('KB-0026').status,'draft');
+  assert.equal(f.locked,false);
+});
+
+test('simplificação protege edições próprias, versões concorrentes, remoções e autorização',()=>{
+  const f=fixture();f.c.setupSupportFlow();restoreOriginalEditions(f);
+  const original=f.c.listGuides({}).simpleUpdates;
+  const edited=f.c.getGuide('KB-0026');f.c.saveGuide({...edited,markdown:edited.markdown+'\n\nOrientação própria do usuário.'});
+  assert.equal(f.c.listGuides({}).simpleUpdates.length,3);
+  assert.throws(()=>f.c.simplifyGuides({confirm:true,guides:original}),/Guia alterado/);
+  assert.equal(f.c.getGuide('KB-0025').revision,'1.0');
+  const custom=f.c.getGuide('KB-0026');
+  assert.throws(()=>f.c.simplifyGuides({confirm:true,guides:[custom]}),/foi editado/);
+  assert.match(f.c.getGuide('KB-0026').markdown,/Orientação própria/);
+  const removed=f.c.getGuide('KB-0027');f.c.deleteGuide({id:removed.id,confirmId:removed.id,updatedAt:removed.updatedAt});
+  assert.equal(f.c.listGuides({}).simpleUpdates.length,2);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.equal(f.c.listGuides({}).simpleUpdates.length,0);
+  assert.throws(()=>f.c.simplifyGuides({confirm:true,guides:[original[0]]}),/administração/);
+  assert.equal(f.locked,false);
+});
+
+test('restaura quatro removidos com texto simplificado, imagens preservadas e sem republicação',()=>{
+  const f=fixture();f.c.setupSupportFlow();restoreOriginalEditions(f);
+  const image=f.c.uploadGuideImage({guideId:'KB-0025',mimeType:'image/png',base64:testPng});
+  const guide=f.c.getGuide('KB-0025');f.c.saveGuide({...guide,status:'published',markdown:guide.markdown+'\n\n![Imagem](sf-image:'+image.id+')'});
+  for(const id of ['KB-0025','KB-0026','KB-0027','KB-0028']) {
+    const g=f.c.getGuide(id);f.c.deleteGuide({id,confirmId:id,updatedAt:g.updatedAt});
+  }
+  assert.equal(f.c.listGuides({}).initialImport.missing,0);
+  assert.equal(f.c.importInitialGuides().imported,0);
+  const removed=f.c.listGuides({}).removedGuides;assert.equal(removed.length,4);
+  const result=f.c.restoreGuides({confirm:true,useSimplified:true,guides:removed});
+  assert.equal(result.restored,4);assert.equal(result.simplified,4);
+  for(const id of ['KB-0025','KB-0026','KB-0027','KB-0028']) {
+    const g=f.c.getGuide(id);assert.equal(g.status,'draft');assert.equal(g.revision,'1.1');
+  }
+  assert.match(f.c.getGuide('KB-0025').markdown,new RegExp('sf-image:'+image.id));
+  assert.equal(f.c.getGuideImage('KB-0025',image.id).base64,testPng);
+  assert.equal(Object.keys(f.driveFiles).length,1);
+  assert.equal(f.c.rows_('Articles').length,CATALOG_SIZE);assert.equal(f.c.listGuides({}).removedGuides.length,0);
+  assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
+  assert.ok(f.c.rows_('Audit').some(a=>a.action==='GUIDES_RESTORE_REQUEST'));
+});
+
+test('restauração preserva texto personalizado e permite recuperar somente a seleção',()=>{
+  const f=fixture();f.c.setupSupportFlow();restoreOriginalEditions(f);
+  const original=f.c.getGuide('KB-0025');f.c.saveGuide({...original,markdown:original.markdown+'\n\nMinha orientação própria.'});
+  for(const id of ['KB-0025','KB-0026']) {const g=f.c.getGuide(id);f.c.deleteGuide({id,confirmId:id,updatedAt:g.updatedAt});}
+  const selected=f.c.listGuides({}).removedGuides.filter(a=>a.id==='KB-0025');
+  const result=f.c.restoreGuides({confirm:true,useSimplified:true,guides:selected});
+  assert.equal(result.restored,1);assert.equal(result.simplified,0);
+  assert.match(f.c.getGuide('KB-0025').markdown,/Minha orientação própria/);
+  assert.equal(f.c.getGuide('KB-0025').revision,'1.0');
+  assert.throws(()=>f.c.getGuide('KB-0026'),/não encontrado/);
+  const remaining=f.c.listGuides({}).removedGuides;
+  f.c.restoreGuides({confirm:true,useSimplified:false,guides:remaining});
+  assert.equal(f.c.getGuide('KB-0026').revision,'1.0');
+});
+
+test('restauração exige admin, confirmação e versão atual e valida o lote antes de alterar',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  for(const id of ['KB-0025','KB-0026']) {const g=f.c.getGuide(id);f.c.deleteGuide({id,confirmId:id,updatedAt:g.updatedAt});}
+  const guides=f.c.listGuides({}).removedGuides;
+  assert.throws(()=>f.c.restoreGuides({guides,useSimplified:true}),/Confirme/);
+  assert.throws(()=>f.c.restoreGuides({confirm:true,useSimplified:true,guides:[guides[0],{...guides[1],updatedAt:'stale'}]}),/Guia alterado/);
+  assert.equal(f.c.listGuides({}).removedGuides.length,2);assert.equal(f.locked,false);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.equal(f.c.listGuides({}).removedGuides.length,0);
+  assert.throws(()=>f.c.restoreGuides({confirm:true,useSimplified:true,guides}),/administração/);
+});
+
+test('remove lote selecionado preservando imagens, demais guias e possibilidade de restauração',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const image=f.c.uploadGuideImage({guideId:'KB-0001',mimeType:'image/png',base64:testPng});
+  const first=f.c.getGuide('KB-0001');f.c.saveGuide({...first,status:'published',markdown:first.markdown+'\n\n![Exemplo](sf-image:'+image.id+')'});
+  const selected=['KB-0001','KB-0002'].map(id=>f.c.getGuide(id));
+  assert.equal(f.c.deleteGuides({confirm:true,guides:selected}).removed,2);
+  assert.equal(f.c.listGuides({}).removedGuides.length,2);assert.equal(f.c.listGuides({}).articles.length,CATALOG_SIZE-2);
+  assert.equal(f.c.getGuide('KB-0003').status,'draft');assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
+  assert.equal(f.c.importInitialGuides().imported,0);assert.equal(Object.keys(f.driveFiles).length,1);
+  assert.throws(()=>f.c.getGuideImage('KB-0001',image.id),/não encontrado/);
+  f.c.restoreGuides({confirm:true,useSimplified:false,guides:f.c.listGuides({}).removedGuides});
+  assert.equal(f.c.getGuideImage('KB-0001',image.id).base64,testPng);
+  assert.equal(f.c.rows_('Articles').length,CATALOG_SIZE);
+  assert.ok(f.c.rows_('Audit').some(a=>a.action==='GUIDES_DELETE_REQUEST'));assert.equal(f.locked,false);
+});
+
+test('remoção em lote exige confirmação, seleção única e versões atuais antes de gravar',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const selected=['KB-0001','KB-0002'].map(id=>f.c.getGuide(id));
+  assert.throws(()=>f.c.deleteGuides({guides:selected}),/Confirme/);
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:[]}),/Confirme/);
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:Array(51).fill(selected[0])}),/Confirme/);
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:[selected[0],selected[0]]}),/inválida/);
+  f.c.saveGuide({...selected[1],title:'Alterado'});
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:selected}),/alterado/);
+  assert.equal(f.c.getGuide('KB-0001').status,'draft');assert.equal(f.c.listGuides({}).removedGuides.length,0);
+  assert.equal(f.locked,false);
+  const current=f.c.getGuide('KB-0002');f.c.deleteGuide({id:current.id,confirmId:current.id,updatedAt:current.updatedAt});
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:selected}),/não está disponível/);
+  assert.equal(f.c.getGuide('KB-0001').status,'draft');
+});
+
+test('Atendimento não pode remover guias em lote diretamente',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const selected=[f.c.getGuide('KB-0001')];
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  assert.throws(()=>f.c.deleteGuides({confirm:true,guides:selected}),/administração/);
+  f.setEmail('admin@example.com');assert.equal(f.c.listGuides({}).removedGuides.length,0);
 });

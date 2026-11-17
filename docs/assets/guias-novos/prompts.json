@@ -1,0 +1,26 @@
+[
+  {
+    "code": "KB-0025",
+    "file": "KB-0025-tempo-da-requisicao.png",
+    "caption": "Clique na chamada, abra Timing e registre o tempo total e a maior etapa.",
+    "prompt": "Crie imagem didática raster horizontal 1536x1024, para Atendimento iniciante. Mesmo padrão SupportFlow: fundo branco, azul-marinho #14283E e setas ciano #34C9DC, letras grandes, bastante espaço, poucos textos e no máximo três destaques. Sem slogans ou decoração. Cabeçalho com código KB. Faixa 'EXEMPLO ILUSTRATIVO • dados fictícios'. Não retratar ambiente real TOTVS nem credenciais. Título exato 'KB-0025 — Onde a chamada está demorando?'. Mostrar recorte simples de DevTools com Network selecionado; lista contendo única chamada 'consultar' com duração5.2s, selecionada. À direita aba Timing selecionada, gráfico com três fases: 'Conexão 0.2s', 'Waiting (TTFB) 4.8s', 'Download 0.2s'. Três setas numeradas: '1 Selecione a chamada' apontando consultar; '2 Abra Timing' apontando aba; '3 Registre os tempos' apontando gráfico. Sob o gráfico pequena explicação 'Waiting: tempo até começar a resposta'. Rodapé 'Esse tempo sozinho não identifica a causa.' Não sobrepor setas aos números. Apenas uma requisição. Os tempos são exemplo simplificado."
+  },
+  {
+    "code": "KB-0026",
+    "file": "KB-0026-mensagens-do-navegador.png",
+    "caption": "Reconheça a mensagem, registre o endereço e peça análise à equipe responsável.",
+    "prompt": "Crie imagem didática raster horizontal 1536x1024, para Atendimento iniciante. Mesmo padrão SupportFlow: fundo branco, azul-marinho #14283E e setas ciano #34C9DC, letras grandes, bastante espaço, poucos textos e no máximo três destaques. Sem slogans ou decoração. Cabeçalho com código KB. Faixa 'EXEMPLO ILUSTRATIVO • dados fictícios'. Não retratar ambiente real TOTVS nem credenciais. Título exato 'KB-0026 — Qual mensagem apareceu?'. Três recortes independentes, lado a lado, rotulados 'Exemplos separados'. Primeiro é Console mostrando 'blocked by CORS policy', anotação simples 'CORS: resposta não liberada para a página'. Segundo é Console mostrando 'Mixed Content: HTTPS → HTTP', anotação 'Conteúdo misto: página e recurso usam protocolos diferentes'. Terceiro é aviso genérico de navegador com 'NET::ERR_CERT_DATE_INVALID', anotação 'Certificado: conexão não validada'. Rodapé em texto grande 'Registre a mensagem e o endereço. Não ignore a proteção.' Não desenhar botões para ignorar ou prosseguir. Não inventar menus TOTVS. Textos curtos e legíveis."
+  },
+  {
+    "code": "KB-0027",
+    "file": "KB-0027-ligando-chamada-ao-log.png",
+    "caption": "Compare horário, fuso e identificador quando ele existir dos dois lados.",
+    "prompt": "Crie imagem didática raster horizontal 1536x1024, para Atendimento iniciante. Mesmo padrão SupportFlow: fundo branco, azul-marinho #14283E e setas ciano #34C9DC, letras grandes, bastante espaço, poucos textos e no máximo três destaques. Sem slogans ou decoração. Cabeçalho com código KB. Faixa 'EXEMPLO ILUSTRATIVO • dados fictícios'. Não retratar ambiente real TOTVS nem credenciais. Título exato 'KB-0027 — Essa chamada aparece no log?'. Dois painéis grandes: 'No navegador' e 'No log do servidor'. Navegador mostra chamada POST /api/exemplo status500, horário '14:30 UTC-03' e 'X-Request-ID: EXEMPLO-001'. Log em editor simples mostra '17:30 UTC | EXEMPLO-001 | ERROR | exemplo.p'. Destaques numerados apenas3: '1 Registre a chamada'; '2 Compare o fuso' ligando horários; '3 Procure o mesmo identificador' ligando EXEMPLO-001. Abaixo explicar '14:30 UTC-03 = 17:30 UTC'. Nota clara 'O identificador é opcional: pode não existir no ambiente.' Rodapé 'Confirme também o servidor e a ação realizada.' Sem tokens, senhas, log real nem diagnóstico."
+  },
+  {
+    "code": "KB-0028",
+    "file": "KB-0028-caminho-da-solicitacao.png",
+    "caption": "Exemplo de caminho no PASOE: navegador, Tomcat e execução ABL, banco quando necessário.",
+    "prompt": "Crie imagem didática raster horizontal 1536x1024, para Atendimento iniciante. Mesmo padrão SupportFlow: fundo branco, azul-marinho #14283E e setas ciano #34C9DC, letras grandes, bastante espaço, poucos textos e no máximo três destaques. Sem slogans ou decoração. Cabeçalho com código KB. Faixa 'EXEMPLO ILUSTRATIVO • dados fictícios'. Não retratar ambiente real TOTVS nem credenciais. Título exato 'KB-0028 — Por onde passa a solicitação?'. Diagrama simples, horizontal, não screenshot. À esquerda bloco 'Navegador' com subtítulo 'Mostra a tela e envia a chamada'. Ao centro UMA caixa maior intitulada 'Exemplo de instância PASOE', contendo dois blocos internos sequenciais 'Tomcat — recebe a chamada' e 'ABL — executa a regra'. À direita cilindro 'Banco de dados' subtítulo 'Consulta ou grava dados, quando necessário'. Setas sólidas de ida ligam Navegador para Tomcat para ABL para Banco. Abaixo seta de retorno discreta para o navegador, rótulo 'A resposta volta para a tela'. Pequenas indicações abaixo: navegador 'Coletar Console e Network'; PASOE 'Solicitar logs ao responsável'. Rodapé 'Esquema de exemplo. A arquitetura real pode ser diferente.' Não mostrar Tomcat como servidor separado anterior ao PASOE. Não colocar várias máquinas ou texto técnico extra."
+  }
+]

@@ -6,13 +6,27 @@ Central interna de apoio ao atendimento de aplicações web TOTVS Datasul em Goo
 
 Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de usuários e auditoria; estrutura de dados no Sheets.
 
-A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 23 guias iniciais. Analisador de logs, Gemini, diagnóstico assistido, histórico e indicadores futuros continuam como páginas explicativas. Não há upload, chat ou relatórios nesta entrega, nem dados fictícios.
+A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 28 guias do catálogo, com envio de imagens de exemplo. Analisador de logs, Gemini, diagnóstico assistido, histórico e indicadores futuros continuam como páginas explicativas. Não há upload de logs, chat ou relatórios nesta entrega.
 
 ## Guias de atendimento
 
-Depois de sincronizar os arquivos com `clasp push`, recarregue a URL de teste do aplicativo. Entre como administrador em **Base de conhecimento → Importar 23 guias iniciais**. Também é possível executar `importInitialGuides` no editor com uma conta admin já cadastrada. Não é necessário reexecutar a inicialização nem recolocar `INITIAL_ADMIN_EMAIL`.
+### Revisão simplificada dos quatro guias novos
 
-A importação adiciona KB-0001 a KB-0023 em cinco categorias, todos como **rascunho**. Abra cada guia, clique em **Editar guia**, revise o conteúdo, selecione **Publicado** e salve. Atendimento só consulta publicados; Administração lê e edita os rascunhos. Para retirar um guia de circulação, salve novamente como Rascunho.
+Os KB-0025 a KB-0028 possuem revisão **1.1**, com passos curtos e termos explicados em `docs/Guias_Simplificados.md`. Essa terceira fonte substitui suas edições 1.0 no catálogo gerado; o histórico usado na comparação fica em `docs/revisions/KB-0025-a-KB-0028-v1.0.json`. As quatro imagens de exemplo, índice e prompts estão em `docs/assets/guias-novos/`.
+
+Se os textos 1.0 já foram importados, o administrador verá **Simplificar N guia(s)**. A ação exige confirmação, revalida concorrência e atualiza apenas os originais reconhecidos. Imagens e status de publicação são mantidos. Guias removidos, já atualizados ou com mudanças próprias de título, categoria, palavras-chave, revisão ou texto não são sobrescritos; diferenças de espaços e adição de imagens são aceitas. Não há atualização automática ao abrir a página, fazer push ou reimportar. Para textos personalizados, consulte a fonte simplificada e adapte-os no editor.
+
+Depois de atualizar o texto, use **Enviar imagens em lote** para os quatro PNGs identificados por código. As figuras não são enviadas ao Drive pelo clasp.
+
+Depois de sincronizar os arquivos com `clasp push`, recarregue a URL de teste do aplicativo. Entre como administrador em **Base de conhecimento → Importar 28 guias iniciais** para uma base vazia, ou no botão que informa os guias restantes para uma base já preenchida. Também é possível executar `importInitialGuides` no editor com uma conta admin já cadastrada. Não é necessário reexecutar a inicialização nem recolocar `INITIAL_ADMIN_EMAIL`.
+
+A importação adiciona KB-0001 a KB-0028 em cinco categorias, inicialmente **Não publicados** (`draft`). Abra cada guia, clique em **Editar guia**, revise o conteúdo, selecione **Publicado** e salve. Atendimento só consulta publicados; Administração lê e edita os não publicados. Para retirar um guia de circulação, salve novamente como Não publicado.
+
+Os KB-0024 a KB-0028 estão em `docs/Guias_Complementares.md`: aplicação de .war; lentidão/timeout; bloqueios do navegador; correlação de Network e logs; e camadas da aplicação web. Uma base com 24 guias mostrará **Importar 4 guia(s) restante(s)**; com os 23 originais, serão cinco. A ação acrescenta somente os ausentes e preserva edições, publicações, imagens e remoções existentes. O SupportFlow apresenta os roteiros e não executa operações no ambiente do cliente. Os novos guias usam referências oficiais e distinguem evidências de hipóteses; confirmar a arquitetura real antes de encaminhar ou alterar qualquer componente.
+
+Na interface, `draft` aparece como **Não publicado**. Importação e publicação são operações distintas: depois de revisar, use **Publicar N guia(s)** na listagem para liberar de uma vez os não publicados dos resultados atuais, ou **Publicar guia** na leitura. A confirmação apresenta os códigos e títulos envolvidos. Os filtros delimitam a seleção; um guia removido não pode ser publicado. Nenhum guia é publicado automaticamente ao sincronizar código ou enviar imagens.
+
+O botão de importação fica oculto quando todos os códigos iniciais já existem na base, inclusive os removidos. Se faltarem códigos, mostra somente a quantidade restante. Essa verificação usa a base inteira e não muda quando se aplica uma pesquisa ou filtro. O resumo exibe cadastrados, publicados e não publicados.
 
 Pesquise por código, título, categoria, palavras-chave ou conteúdo (por exemplo F12, 500, PROPATH e objeto desatualizado). A pesquisa ignora acentos e exige que todos os termos estejam presentes. Os códigos KB no texto abrem guias relacionados; referências externas abrem outra aba. Um relacionado ainda não publicado permanece inacessível ao Atendimento.
 
@@ -20,9 +34,19 @@ O conteúdo pode ser editado em Markdown, com pré-visualização: títulos, pas
 
 ### Remover guias
 
+Para remover vários, marque as caixas ao lado dos artigos e clique em **Remover selecionados**. **Selecionar todos os resultados** marca somente a lista atualmente exibida, respeitando pesquisa e filtros. Uma nova pesquisa limpa a seleção. A confirmação lista códigos e títulos; nenhuma remoção acontece ao apenas marcar as caixas. O limite é 50 por operação, com autorização administrativa, controle de concorrência e auditoria no servidor. O lote é validado antes das gravações, mas uma falha operacional no Sheets ainda pode produzir conclusão parcial; recarregue e confira os removidos antes de repetir.
+
 Administradores podem clicar em **Remover** na listagem ou **Remover guia** dentro do artigo e confirmar o código/título exibidos. A operação retira o guia da listagem, pesquisa, orientações recentes e contagem de publicados. O conteúdo fica marcado como `deleted` na planilha para manter o registro técnico e impedir que a importação inicial recrie o guia. A remoção não depende da configuração de imagens nem exige nova inicialização.
 
-O registro de auditoria acompanha a solicitação de remoção. Arquivos no Drive, vínculos de imagem e categorias são preservados; novas consultas de imagens de um guia removido são bloqueadas. Links em outros guias não são alterados automaticamente e passam a informar que o destino não está disponível. Não há restauração pela interface nesta entrega. Uma alteração concorrente exige recarregar e confirmar novamente antes de remover.
+O registro de auditoria acompanha a solicitação de remoção. Arquivos no Drive, vínculos de imagem e categorias são preservados; novas consultas de imagens de um guia removido são bloqueadas. Links em outros guias não são alterados automaticamente e passam a informar que o destino não está disponível. Uma alteração concorrente exige recarregar e confirmar novamente antes de remover.
+
+### Restaurar guias removidos
+
+Abra **Base de conhecimento → Removidos (N)** como administrador, marque somente os artigos desejados e clique em **Restaurar selecionados**. A recuperação mantém o código, o conteúdo salvo e os vínculos de imagem, sem duplicar registros. Os guias voltam sempre como **Não publicado**, mesmo que estivessem publicados antes da remoção; confira e publique para disponibilizá-los ao Atendimento.
+
+Para os KB-0025 a KB-0028, a opção **Usar a versão simplificada** vem marcada. Ela aplica a revisão 1.1 somente se o conteúdo 1.0 ainda corresponder ao original reconhecido, preservando imagens. Textos personalizados são restaurados como estavam, sem sobrescrita. Desmarque a opção para recuperar exatamente a edição armazenada.
+
+A importação continua ignorando guias removidos de propósito. A restauração é uma operação distinta, autorizada no servidor, com validação de versão, confirmação da seleção e registro de auditoria. Não exige nova inicialização, configuração de Drive nem alteração manual na planilha.
 
 ## Imagens nos guias
 
@@ -34,6 +58,16 @@ Em **Base de conhecimento → abrir guia → Editar guia**:
 2. Em **Adicionar imagem**, escolha um PNG, JPEG ou WebP de até 2 MB e preencha a legenda.
 3. Clique em **Enviar e inserir imagem**. O arquivo é gravado no Drive e uma referência é inserida no texto.
 4. Use **Pré-visualizar** para conferir; depois clique em **Salvar alterações**. Publicar segue o fluxo normal de revisão.
+
+É possível selecionar várias imagens no editor do mesmo guia. Cada arquivo recebe uma legenda editável, é enviado em sequência e inserido na ordem escolhida. O limite continua sendo 12 imagens referenciadas por guia e 2 MB por arquivo. O envio não salva o artigo nessa modalidade: clique em **Salvar alterações** ao terminar.
+
+Para distribuir as imagens de vários guias de uma vez, descompacte o ZIP e use **Base de conhecimento → Enviar imagens em lote**. Selecione até 50 arquivos; o código no nome, como `KB-0001-console.png`, define o destino. Confira os códigos e as legendas apresentados, depois clique em **Enviar e salvar imagens**. Essa modalidade insere as figuras na seção **Como fazer**, antes dos passos, e salva mantendo o status atual. Imagens já nessa posição mantêm sua ordem, com as novas em seguida. Sem esse título, a inserção ocorre antes do primeiro passo ou das referências; sem essas marcações, ao final do texto. Guias publicados continuam publicados e não publicados continuam não publicados. Arquivos sem um código cadastrado não são enviados. Para escolher uma posição específica entre passos, use o editor individual.
+
+Imagens antigas que ficaram soltas no fim, depois das seções finais de guias com Como fazer, são reorganizadas automaticamente na leitura. O editor abre com essa organização e a persiste ao salvar; não é necessário reenviar as imagens. A organização não executa migração automática na planilha nem modifica imagens inseridas entre os passos.
+
+Os arquivos são processados um de cada vez com progresso por item. Em falha parcial, os concluídos são preservados e **Tentar restantes** repete somente os pendentes da seleção atual. Se o upload já concluiu mas o salvamento falhou, o ID é reutilizado na tentativa seguinte da mesma janela. Fechar/recarregar ou trocar a seleção descarta essa fila local; arquivos ainda não vinculados podem permanecer no Drive. A rotina para de iniciar novos envios quando se navega para outra página, mas uma chamada já iniciada pode concluir. A publicação em lote valida toda a seleção antes de gravar, porém falhas operacionais no Sheets podem causar conclusão parcial; recarregue para conferir o estado antes de tentar novamente.
+
+A janela de envio em lote é única: cliques repetidos não abrem outra nem limpam os arquivos selecionados. Ao concluir todos os envios, ela fecha automaticamente, atualiza a base e exibe uma mensagem de sucesso. Se houver itens com erro, permanece aberta com **Tentar restantes** habilitado. Durante o envio, os controles ficam desabilitados para evitar operações duplicadas.
 
 O exemplo gerado está em `docs/assets/exemplo-console-network.png` e pode ser selecionado nesse envio. Na leitura, clique na imagem para ampliar; feche pelo botão ou pela tecla Escape.
 
@@ -47,7 +81,7 @@ Reimportar preserva registros existentes, inclusive edições. Se um código já
 
 Fonte adotada: `docs/Guias_Atendimento_Fonte.md`, cópia do Markdown fornecido. O DOCX foi consultado como referência complementar. Instruções editoriais, catálogo e lista global de referências não integram o corpo dos artigos; cada guia conserva suas próprias referências. Orientações gerais ficam em uma seção recolhível na listagem. O conteúdo não foi certificado como política oficial nem suas referências foram revalidadas nesta implementação.
 
-`GuideSeeds.gs` é gerado por `node scripts/build-guides.cjs`, sem dependências. Alterar a fonte e regenerar o pacote não atualiza artigos já importados, para proteger edições; atualize-os pela aplicação. Campos editoriais ficam em JSON versionado dentro de `Articles.content`, sem alterar cabeçalhos ou migrar a planilha existente.
+`GuideSeeds.gs` é gerado por `node scripts/build-guides.cjs`, sem dependências, combinando a fonte original com `docs/Guias_Complementares.md`. O documento original de 23 guias é preservado. Alterar uma fonte e regenerar o pacote não atualiza artigos já importados, para proteger edições; atualize-os pela aplicação. Novos códigos aparecem como pendentes de importação. Campos editoriais ficam em JSON versionado dentro de `Articles.content`, sem alterar cabeçalhos ou migrar a planilha existente.
 
 ## Arquivos
 
@@ -58,7 +92,9 @@ Fonte adotada: `docs/Guias_Atendimento_Fonte.md`, cópia do Markdown fornecido. 
 | DataService.gs | Persistência, inicialização e auditoria |
 | Knowledge.gs / GuideSeeds.gs | Consulta, edição, importação e conteúdo inicial dos guias |
 | GuideImages.gs | Envio e consulta autorizada de imagens no Drive |
+| GuideUpdates.gs | Atualização confirmada das edições originais dos KB-0025 a KB-0028 |
 | KnowledgeScripts.html | Lista, leitura e editor dos guias |
+| KnowledgeUploads.html | Seleção múltipla e fila de envio de imagens, incluindo distribuição por código KB |
 | Index.html / Styles.html / Scripts.html | Interface e comportamento do frontend |
 | appsscript.json | Runtime V8, fuso e escopos OAuth |
 | tests/backend.test.cjs | Testes locais com serviços Google simulados |
@@ -101,7 +137,7 @@ As quotas dependem da conta e podem mudar. Leituras em lote e gravações curtas
 
 ## Persistência
 
-Tabelas iniciais: `Users`, `Categories`, `Articles`, `Audit`, `GuideImages`. Em bases existentes, a configuração de imagens adiciona apenas a tabela nova. Estruturas reservadas, sem comportamento implementado: `LogRules`, `DiagnosticFlows`, `DiagnosticHistory`, `AnalysisMetadata`, `Settings`. Artigos e categorias não são preenchidos automaticamente. IDs são UUID (os guias iniciais usam KB-0001 a KB-0023), datas novas ISO UTC; exibição no fuso São Paulo.
+Tabelas iniciais: `Users`, `Categories`, `Articles`, `Audit`, `GuideImages`. Em bases existentes, a configuração de imagens adiciona apenas a tabela nova. Estruturas reservadas, sem comportamento implementado: `LogRules`, `DiagnosticFlows`, `DiagnosticHistory`, `AnalysisMetadata`, `Settings`. Artigos e categorias não são preenchidos automaticamente. IDs são UUID (os guias do catálogo usam KB-0001 a KB-0028), datas novas ISO UTC; exibição no fuso São Paulo.
 
 Alterações de usuários usam lock do script e preservam ao menos um admin ativo. Auditoria é gravada antes da alteração como registro da operação solicitada, sem garantia transacional de conclusão. Sheets não oferece transação entre essas duas gravações. Eventos contêm e-mails administrativos: definir acesso e retenção antes de produção. Não existe limpeza automática.
 

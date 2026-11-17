@@ -1,0 +1,149 @@
+<script>
+window.SupportFlowUploads = (() => {
+  'use strict';
+  const esc=value=>String(value || '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fileCode=name=>(String(name).match(/\bKB-\d{4}(?!\d)/i) || [''])[0].toUpperCase();
+  const defaultCaption=file=>file.name.replace(/\.[^.]+$/,'').replace(/_/g,' ').slice(0,200);
+  let batchOpening=false, batchDialog=null;
+  function placeImages(markdown,added='') {
+    const original=String(markdown),lines=original.replace(/\r\n/g,'\n').split('\n');
+    const image=/^!\[[^\]\r\n]{0,200}\]\(sf-image:([A-Za-z0-9_-]{1,80})\)$/;
+    const howTo=lines.findIndex(line=>/^#{1,6}\s+Como fazer\s*#*\s*$/i.test(line.trim()));
+    const later=lines.findIndex((line,i)=>i>howTo && /^(?:#{1,6}\s+(?:O que o resultado significa|Referências)|\*\*(?:O que anexar ao chamado|Quando pedir ajuda|Guias relacionados|Referências):\*\*)/i.test(line.trim()));
+    const moving=[];
+    let end=lines.length;
+    // Corrige somente o bloco de imagens soltas após as seções finais.
+    if(howTo>=0 && later>howTo) {
+      while(end>later) {
+        const line=lines[end-1].trim();
+        if(!line) {end--;continue;}
+        if(!image.test(line)) break;
+        moving.unshift(line);end--;
+      }
+    }
+    const addedLines=String(added).trim().split(/\r?\n/).filter(line=>image.test(line.trim())).map(line=>line.trim());
+    if(!moving.length && !addedLines.length) return original;
+    const remaining=moving.length ? lines.slice(0,end) : lines;
+    const seen=new Set();
+    remaining.forEach(line=>{const match=image.exec(line.trim());if(match) seen.add(match[1]);});
+    const images=moving.concat(addedLines).filter(line=>{const id=image.exec(line)[1];if(seen.has(id)) return false;seen.add(id);return true;});
+    if(!images.length) return moving.length ? remaining.join('\n').trimEnd() : original;
+    let at;
+    if(howTo>=0) {
+      at=howTo+1;
+      while(at<remaining.length && (!remaining[at].trim() || image.test(remaining[at].trim()))) at++;
+    } else {
+      at=remaining.findIndex(line=>/^(?:\d+\.\s|#{1,6}\s+Referências|\*\*Referências:\*\*)/i.test(line.trim()));
+      if(at<0) at=remaining.length;
+    }
+    const before=remaining.slice(0,at).join('\n').trimEnd(),after=remaining.slice(at).join('\n').trimStart();
+    return (before ? before+'\n\n' : '')+images.join('\n\n')+(after ? '\n\n'+after : '');
+  }
+  function imageCount(text) {
+    return new Set(Array.from(String(text).matchAll(/^!\[[^\]\r\n]{0,200}\]\(sf-image:([A-Za-z0-9_-]{1,80})\)\s*$/gm),m=>m[1])).size;
+  }
+  function validateFile(file) {
+    if(!file || !['image/png','image/jpeg','image/webp'].includes(file.type) || !file.size || file.size>2097152) {
+      throw new Error('Use PNG, JPEG ou WebP de até 2 MB por arquivo.');
+    }
+  }
+  function readFile(file) {
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);
+      reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file);
+    });
+  }
+  async function sendQueue({entries,rpc,isActive=()=>true,onProgress=()=>{},onSuccess=()=>{},beforeUpload=()=>{},attach=false,read=readFile}) {
+    for(let i=0;i<entries.length;i++) {
+      if(!isActive()) break;
+      const entry=entries[i];if(entry.done) continue;
+      entry.error='';entry.sending=true;onProgress(entry,i);
+      try {
+        validateFile(entry.file);
+        if(!entry.guideId) throw new Error('Código KB não encontrado na base.');
+        if(!entry.caption || entry.caption.length>200 || /[\]\r\n]/.test(entry.caption)) throw new Error('Informe uma legenda de até 200 caracteres, sem ] ou quebras de linha.');
+        let guide;
+        if(attach) {
+          guide=await rpc('getGuide',entry.guideId);
+          if(imageCount(guide.markdown)>=12) throw new Error('Este guia já possui 12 imagens.');
+        }
+        beforeUpload(entry);
+        if(!isActive()) break;
+        if(!entry.uploadedId) {
+          const base64=await read(entry.file);
+          if(!isActive()) break;
+          const result=await rpc('uploadGuideImage',{guideId:entry.guideId,mimeType:entry.file.type,base64});
+          entry.uploadedId=result.id;
+        }
+        if(!isActive()) break;
+        const token='\n\n!['+entry.caption+'](sf-image:'+entry.uploadedId+')\n\n';
+        if(attach) await rpc('saveGuide',{...guide,markdown:placeImages(guide.markdown,token)});
+        await onSuccess(entry,token);
+        entry.done=true;
+      } catch(error) {entry.error=error.message || String(error);}
+      finally {entry.sending=false;onProgress(entry,i);}
+    }
+    return {succeeded:entries.filter(e=>e.done).length,failed:entries.filter(e=>!e.done).length,total:entries.length};
+  }
+  function selectionHtml(entries) {
+    return entries.map((entry,i)=>`<div class="upload-file-row"><strong>${esc(entry.file.name)}</strong><small>${esc(entry.guideId || 'Código KB não encontrado')}</small><label>Legenda<input data-caption="${i}" maxlength="200" value="${esc(entry.caption)}"></label><small data-progress="${i}" role="status">${entry.done ? 'Concluído' : esc(entry.error || 'Aguardando envio')}</small></div>`).join('');
+  }
+  function readCaptions(root,entries) {
+    root.querySelectorAll('[data-caption]').forEach(input=>{if(!entries[Number(input.dataset.caption)].done) entries[Number(input.dataset.caption)].caption=input.value.trim();});
+  }
+  function progress(root,entry,i) {
+    const status=root.querySelector('[data-progress="'+i+'"]');
+    if(status) status.textContent=entry.done ? 'Concluído' : entry.error || (entry.sending ? 'Enviando…' : 'Aguardando envio');
+  }
+  async function openBatch({rpc,content,isCurrent,onChange,onComplete=()=>{}}) {
+    if(batchOpening || (batchDialog && batchDialog.isConnected)) {
+      if(batchDialog && batchDialog.open) batchDialog.focus();
+      return;
+    }
+    batchOpening=true;
+    try {
+    const data=await rpc('listGuides',{});if(!isCurrent()) return;
+    const guides=new Map(data.articles.map(a=>[a.id,a]));
+    const dialog=document.createElement('dialog');dialog.className='guide-batch-dialog';
+    dialog.setAttribute('aria-label','Enviar imagens em lote');
+    dialog.innerHTML='<h2>Enviar imagens em lote</h2><p>Selecione até 50 imagens. O código no nome (ex.: KB-0001-console.png) define o guia de destino. Confira as legendas antes de enviar. As imagens ficarão em Como fazer, antes dos passos, sem alterar o status dos guias.</p><label>Imagens (até 2 MB cada)<input type="file" accept="image/png,image/jpeg,image/webp" multiple data-files></label><div data-selection></div><p role="status" data-summary></p><div class="guide-actions"><button type="button" class="button secondary" data-close>Fechar</button><button type="button" class="button" data-send disabled>Enviar e salvar imagens</button></div>';
+    const files=dialog.querySelector('[data-files]'),selection=dialog.querySelector('[data-selection]'),send=dialog.querySelector('[data-send]'),close=dialog.querySelector('[data-close]'),summary=dialog.querySelector('[data-summary]');
+    let entries=[],pending=false,changed=false;
+    files.addEventListener('change',()=>{
+      const chosen=Array.from(files.files);
+      if(chosen.length>50) {entries=[];selection.innerHTML='';send.disabled=true;summary.textContent='Selecione até 50 arquivos por envio.';return;}
+      entries=chosen.map(file=>{const code=fileCode(file.name);return {file,guideId:guides.has(code) ? code : '',caption:guides.get(code)?.title || defaultCaption(file)};});
+      selection.innerHTML=selectionHtml(entries);summary.textContent=entries.length+' imagem(ns) selecionada(s).';send.disabled=!entries.length;
+    });
+    close.addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('cancel',event=>{if(pending) event.preventDefault();});
+    dialog.addEventListener('close',()=>{
+      if(batchDialog===dialog) batchDialog=null;
+      dialog.remove();if(changed && isCurrent()) onChange();
+    });
+    send.addEventListener('click',async()=>{
+      if(pending || !entries.length || entries.every(entry=>entry.done)) return;
+      readCaptions(selection,entries);pending=true;files.disabled=true;send.disabled=true;close.disabled=true;
+      selection.querySelectorAll('input').forEach(input=>{input.disabled=true;});
+      try {
+        const result=await sendQueue({entries,rpc,attach:true,isActive:()=>isCurrent() && dialog.open,
+          onSuccess:()=>{changed=true;},onProgress:(entry,i)=>{progress(selection,entry,i);summary.textContent=entries.filter(e=>e.done).length+' de '+entries.length+' concluída(s).';}});
+        summary.textContent=result.succeeded+' salva(s); '+result.failed+' não enviada(s).'+(result.failed ? ' Corrija os itens indicados e tente novamente; os concluídos serão preservados.' : '');
+        send.textContent=result.failed ? 'Tentar restantes' : 'Envio concluído';send.disabled=!result.failed;
+        if(!result.failed && isCurrent()) {
+          onComplete(result.succeeded+' imagem(ns) enviada(s) e salva(s).');
+          dialog.close();
+        }
+      } catch(error) {
+        summary.textContent=error.message || String(error);send.disabled=false;
+      } finally {
+        pending=false;files.disabled=false;close.disabled=false;
+        selection.querySelectorAll('[data-caption]').forEach(input=>{input.disabled=!!entries[Number(input.dataset.caption)].done;});
+      }
+    });
+    content.append(dialog);batchDialog=dialog;dialog.showModal();
+    } finally {batchOpening=false;}
+  }
+  return {fileCode,defaultCaption,imageCount,placeImages,validateFile,sendQueue,selectionHtml,readCaptions,progress,openBatch};
+})();
+</script>

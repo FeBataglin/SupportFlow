@@ -1,0 +1,9 @@
+# KB-0012 — revisão Basic Auth
+
+Imagem editada com a ferramenta integrada imagegen conforme orientação do usuário. A URL é um exemplo fornecido pelo usuário; não foi acessada. Usuário e senha da figura são fictícios.
+
+Arquivo final: KB-0012-postman-basic-auth-v2.png. Substitui a variante anterior No Auth.
+
+## Prompt
+
+Edite a imagem fornecida do guia KB-0012 para corrigir o exemplo de Postman. Preserve o estilo de manual técnico, fundo branco, azul-marinho e ciano, layout horizontal 1536x1024, texto legível e marcações numeradas. Cabeçalho exato 'KB-0012 — Postman com Basic Auth'. Subtítulo 'SIMULAÇÃO • credenciais fictícias • interface ilustrativa'. Método GET. Na barra URL mostrar exatamente 'http://engjv-devdock01:8183/api/ofp/v1/nomeDoPrograma' em uma única linha, ajustando o tamanho para ficar totalmente legível e sem cortar. Botão Send à direita. A aba Authorization deve estar selecionada. Dentro dela, Type ou Auth Type deve ser 'Basic Auth', NUNCA 'No Auth'. Mostrar os campos 'Username' com valor fictício 'login_do_ambiente' e 'Password' com valor mascarado '••••••••••'. Anotação junto aos campos: 'Use o login e a senha do ambiente informado na URL'. Remover todos os textos do original que dizem público, sem autenticação ou No Auth. Quatro destaques: 1 'Método GET'; 2 'URL do ambiente'; 3 'Basic Auth: login e senha do mesmo ambiente'; 4 'Send: executar a consulta'. Painel Response inferior pequeno, com rótulo 'Exemplo de resposta' e JSON {"resultado":"exemplo"}, sem afirmar que esta URL real foi consultada nem garantir status200. Rodapé 'Substitua nomeDoPrograma pelo recurso desejado. Use credenciais próprias e autorizadas.' Sem senhas reais, tokens, cabeçalhos Authorization completos ou dados de clientes. Esta é uma ilustração da configuração informada pelo usuário; não contate o servidor. Evite texto sobreposto e garanta URL e credenciais em campos distintos.

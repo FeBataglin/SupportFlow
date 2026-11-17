@@ -18,7 +18,17 @@ function listGuides(options) {
   var user = requireUser_();
   options = options || {};
   var terms = searchText_(String(options.query || '').slice(0, 300)).split(/\s+/).filter(Boolean);
-  var articles = rows_('Articles').filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); }).map(guideData_);
+  var stored = rows_('Articles');
+  var articles = stored.filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); }).map(guideData_);
+  var summary = { total: articles.length, drafts: articles.filter(function (a) { return a.status === 'draft'; }).length,
+    published: articles.filter(function (a) { return a.status === 'published'; }).length };
+  var initialImport = null;
+  if (user.role === 'admin') {
+    var seeds = initialGuides_();
+    initialImport = { total: seeds.length, missing: seeds.filter(function (seed) {
+      return !stored.some(function (a) { return a.id === seed.id; });
+    }).length };
+  }
   var categories = articles.map(function (a) { return a.category; }).filter(function (c, i, all) { return c && all.indexOf(c) === i; }).sort();
   articles = articles.filter(function (a) {
     if (options.category && a.category !== options.category) return false;
@@ -26,9 +36,44 @@ function listGuides(options) {
     var haystack = searchText_([a.id, a.title, a.category, a.keywords, a.markdown].join(' '));
     return terms.every(function (term) { return haystack.indexOf(term) >= 0; });
   });
-  return { categories: categories, guidelines: guideGuidelines_(), articles: articles.sort(function (a,b) { return a.id.localeCompare(b.id); }).map(function (a) {
+  return { categories: categories, guidelines: guideGuidelines_(), summary: summary, initialImport: initialImport,
+    simpleUpdates: user.role === 'admin' ? availableSimpleGuideUpdates_(stored) : [],
+    removedGuides: user.role === 'admin' ? stored.filter(function (a) {return a.status === 'deleted';})
+      .map(function (a) {return {id:a.id,title:a.title,category:a.category,updatedAt:a.updatedAt};}) : [],
+    articles: articles.sort(function (a,b) { return a.id.localeCompare(b.id); }).map(function (a) {
     return { id: a.id, title: a.title, category: a.category, keywords: a.keywords, status: a.status, updatedAt: a.updatedAt };
   }) };
+}
+
+/** Publica somente os rascunhos explicitamente confirmados na interface. */
+function publishGuides(input) {
+  requireUser_('admin');
+  if (!input || input.confirm !== true || !Array.isArray(input.guides) || !input.guides.length || input.guides.length > 50) {
+    throw new Error('Confirme entre 1 e 50 guias para publicar.');
+  }
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var user = requireUser_('admin'), stored = rows_('Articles'), ids = [];
+    var selected = input.guides.map(function (item) {
+      if (!item || typeof item.id !== 'string' || ids.indexOf(item.id) >= 0) throw new Error('Seleção de guias inválida.');
+      ids.push(item.id);
+      var article = stored.filter(function (a) { return a.id === item.id; })[0];
+      if (!article || article.status !== 'draft') throw new Error('O guia ' + item.id + ' não está mais disponível como rascunho. Recarregue a base.');
+      if (article.updatedAt !== item.updatedAt) throw new Error('O guia ' + item.id + ' foi alterado. Recarregue antes de publicar.');
+      var guide = guideData_(article);
+      if (!guide.title.trim() || !guide.category.trim() || !guide.markdown.trim()) throw new Error('Guia incompleto: ' + item.id);
+      validateGuideImages_(article.id, guide.markdown);
+      return article;
+    });
+    // Valida toda a seleção antes da primeira gravação; Sheets não é transacional.
+    audit_(user.email, 'GUIDES_PUBLISH_REQUEST', ids.join(', '));
+    selected.forEach(function (article) {
+      article.status = 'published';
+      article.updatedAt = new Date(Math.max(Date.now(), new Date(article.updatedAt).getTime() + 1 || 0)).toISOString();
+      writeRow_('Articles', article, rowNumberForId_('Articles', article.id));
+    });
+    return { published: selected.length };
+  } finally { lock.releaseLock(); }
 }
 
 function getGuide(id) {
@@ -96,12 +141,71 @@ function deleteGuide(input) {
   } finally { lock.releaseLock(); }
 }
 
+/** Remoção lógica em lote; a seleção é validada antes das gravações. */
+function deleteGuides(input) {
+  requireUser_('admin');
+  if(!input || input.confirm!==true || !Array.isArray(input.guides) || !input.guides.length || input.guides.length>50) {
+    throw new Error('Confirme de 1 a 50 guias para remover.');
+  }
+  var lock=LockService.getScriptLock();lock.waitLock(10000);
+  try {
+    var user=requireUser_('admin'),stored=rows_('Articles'),ids=[];
+    var selected=input.guides.map(function (item) {
+      if(!item || typeof item.id!=='string' || ids.indexOf(item.id)>=0) throw new Error('Seleção inválida.');
+      ids.push(item.id);
+      var article=stored.filter(function (a) {return a.id===item.id;})[0];
+      if(!article || article.status==='deleted') throw new Error('Um dos guias não está disponível. Recarregue a base.');
+      if(article.updatedAt!==item.updatedAt) throw new Error('O guia '+item.id+' foi alterado. Recarregue antes de remover.');
+      return article;
+    });
+    // Confere todo o lote antes de alterar o primeiro registro.
+    audit_(user.email,'GUIDES_DELETE_REQUEST',ids.join(', '));
+    selected.forEach(function (article) {
+      article.status='deleted';
+      article.updatedAt=new Date(Math.max(Date.now(),new Date(article.updatedAt).getTime()+1 || 0)).toISOString();
+      writeRow_('Articles',article,rowNumberForId_('Articles',article.id));
+    });
+    return {removed:selected.length};
+  } finally {lock.releaseLock();}
+}
+
+/** Restauração explícita; importar continua sem recriar guias removidos. */
+function restoreGuides(input) {
+  requireUser_('admin');
+  if(!input || input.confirm!==true || !Array.isArray(input.guides) || !input.guides.length || input.guides.length>50 ||
+      typeof input.useSimplified!=='boolean') throw new Error('Confirme de 1 a 50 guias para restaurar.');
+  var lock=LockService.getScriptLock();lock.waitLock(10000);
+  try {
+    var user=requireUser_('admin'),stored=rows_('Articles'),ids=[],simplified=0;
+    var changes=input.guides.map(function (item) {
+      if(!item || typeof item.id!=='string' || ids.indexOf(item.id)>=0) throw new Error('Seleção inválida.');
+      ids.push(item.id);
+      var article=stored.filter(function (a) {return a.id===item.id;})[0];
+      if(!article || article.status!=='deleted') throw new Error('Guia não está mais removido. Recarregue a base.');
+      if(article.updatedAt!==item.updatedAt) throw new Error('Guia alterado. Recarregue antes de restaurar.');
+      // A volta é sempre privada ao administrador, sem republicação automática.
+      article.status='draft';
+      if(input.useSimplified) {
+        var candidate=simpleGuideCandidate_(article);
+        if(candidate) {article.content=JSON.stringify(candidate);simplified++;}
+      }
+      return article;
+    });
+    audit_(user.email,'GUIDES_RESTORE_REQUEST',ids.join(', '));
+    changes.forEach(function (article) {
+      article.updatedAt=new Date(Math.max(Date.now(),new Date(article.updatedAt).getTime()+1 || 0)).toISOString();
+      writeRow_('Articles',article,rowNumberForId_('Articles',article.id));
+    });
+    return {restored:changes.length,simplified:simplified};
+  } finally {lock.releaseLock();}
+}
+
 /** Disponível ao administrador no módulo Conhecimento ou pelo editor. */
 function importInitialGuides() {
   requireUser_('admin');
   var seeds = initialGuides_();
   var codes = seeds.map(function (a) { return a.id; });
-  if (codes.length !== 23 || codes.some(function (code,i) { return codes.indexOf(code) !== i || !/^KB-\d{4}$/.test(code); })) {
+  if (!codes.length || codes.some(function (code,i) { return codes.indexOf(code) !== i || !/^KB-\d{4}$/.test(code); })) {
     throw new Error('Pacote de guias inválido.');
   }
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
@@ -110,7 +214,7 @@ function importInitialGuides() {
     var existing = rows_('Articles');
     var result = { imported: 0, skipped: [], conflicts: [] };
     var now = new Date().toISOString();
-    audit_(user.email, 'GUIDES_IMPORT_REQUEST', 'Pacote inicial: 23 guias / revisão 1.0');
+    audit_(user.email, 'GUIDES_IMPORT_REQUEST', 'Catálogo: ' + seeds.length + ' guias / revisão 1.0');
     seeds.forEach(function (seed) {
       var matches = existing.filter(function (a) { return a.id === seed.id; });
       if (matches.length) {
