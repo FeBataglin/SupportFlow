@@ -4,7 +4,81 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(__dirname,'..');
-const CATALOG_SIZE = 28;
+const CATALOG_SIZE = 35;
+
+test('prévia de Atendimento oculta rascunhos, imagens e sugestões alheias sem alterar perfil real',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const bootstrap=f.c.getBootstrap({preview:true});assert.equal(bootstrap.user.role,'support');assert.equal(bootstrap.user.canPreview,true);
+  assert.equal(f.c.listGuides({preview:true}).articles.length,0);assert.equal(f.c.listGuides({preview:true}).initialImport,null);
+  assert.throws(()=>f.c.getGuide('KB-0001',{preview:true}),/não encontrado/);
+  const image=f.c.uploadGuideImage({guideId:'KB-0001',mimeType:'image/png',base64:testPng});
+  let guide=f.c.getGuide('KB-0001');f.c.saveGuide({...guide,markdown:guide.markdown+'\n\n![Exemplo](sf-image:'+image.id+')'});
+  assert.throws(()=>f.c.getGuideImage('KB-0001',image.id,{preview:true}),/não encontrado/);
+  guide=f.c.getGuide('KB-0001');f.c.publishGuides({confirm:true,guides:[{id:guide.id,updatedAt:guide.updatedAt}]});
+  assert.equal(f.c.listGuides({preview:true}).articles.length,1);assert.ok(f.c.getGuideImage('KB-0001',image.id,{preview:true}).base64);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  f.c.createSuggestion({type:'guide',title:'Exemplo de teste',program:'',details:'Gostaria de exemplos para testes.',expected:'',requestId:'preview_test_support'});
+  f.setEmail('admin@example.com');assert.equal(f.c.listSuggestions().total,1);assert.equal(f.c.listSuggestions({preview:true}).total,0);
+  assert.equal(f.c.requireUser_().role,'admin');assert.equal(f.c.getBootstrap().user.role,'admin');
+  f.setEmail('support@example.com');assert.equal(f.c.getBootstrap({preview:false}).user.canPreview,false);assert.throws(()=>f.c.getAdminData(),/administração/);
+});
+
+test('PROPATH encontra somente assunto e palavras-chave por padrão; conteúdo completo é opcional',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const direct=f.c.listGuides({query:'PROPATH'}).articles.map(a=>a.id);
+  assert.deepEqual(Array.from(direct),['KB-0015','KB-0022']);
+  const broad=f.c.listGuides({query:'PROPATH',scope:'content'}).articles.map(a=>a.id);
+  assert.ok(broad.includes('KB-0013'));assert.ok(broad.length>direct.length);
+});
+
+test('busca reconhece códigos, termos com acentos/plural e prioriza assunto no título',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  assert.equal(f.c.listGuides({query:'KB 0013'}).articles[0].id,'KB-0013');
+  assert.equal(f.c.listGuides({query:'KB13 logs'}).articles[0].id,'KB-0013');
+  assert.equal(f.c.listGuides({query:'como validar o propath'}).articles[0].id,'KB-0015');
+  assert.equal(f.c.listGuides({query:'cálculo errado'}).articles[0].id,'KB-0034');
+  assert.equal(f.c.listGuides({query:'relatórios RPW'}).articles[0].id,'KB-0035');
+  assert.equal(f.c.listGuides({query:'KB-0013',category:'Não existe'}).articles.length,0);
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');assert.equal(f.c.listGuides({query:'RPW'}).articles.length,0);
+});
+
+test('sugestões são salvas sem duplicação, autor vê somente as próprias e admin acompanha todas',()=>{
+  const f=fixture();f.c.setupSupportFlow();
+  f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
+  const input={type:'guide',title:'Guia de RPW',program:'relatorio.p',details:'Preciso de exemplos de parâmetros para conferir.',expected:'Exemplo de teste',requestId:'request_support_123'};
+  const first=f.c.createSuggestion(input);assert.equal(f.c.createSuggestion(input).id,first.id);
+  assert.equal(f.c.listSuggestions().items.length,1);
+  assert.throws(()=>f.c.updateSuggestion({id:first.id,status:'done',response:''}),/administração/);
+  f.setEmail('admin@example.com');f.c.createSuggestion({...input,requestId:'request_admin_123'});assert.equal(f.c.listSuggestions().items.length,2);
+  const item=f.c.listSuggestions().items.find(item=>item.id===first.id);
+  f.c.updateSuggestion({id:item.id,updatedAt:item.updatedAt,status:'planned',response:'Vamos montar o exemplo.'});
+  assert.throws(()=>f.c.updateSuggestion({id:item.id,updatedAt:item.updatedAt,status:'done',response:''}),/alterada/);
+  f.setEmail('support@example.com');const own=f.c.listSuggestions().items;
+  assert.equal(own.length,1);assert.equal(own[0].status,'planned');assert.equal(own[0].response,'Vamos montar o exemplo.');
+});
+
+test('tabela de sugestões é criada em base existente sem reinicializar e entrada inválida não é gravada',()=>{
+  const f=fixture();f.c.setupSupportFlow();delete f.tables.Suggestions;
+  assert.equal(f.c.listSuggestions().total,0);assert.ok(f.tables.Suggestions);
+  assert.throws(()=>f.c.createSuggestion({type:'guide',title:'',program:'',details:'curto',expected:'',requestId:'request_test_123'}),/título/);
+  assert.equal(f.c.rows_('Suggestions').length,0);
+  f.tables.Suggestions.cells[0][0]='incompatível';assert.throws(()=>f.c.listSuggestions(),/incompatível/);
+});
+
+test('revisão de ambientes separados atualiza originais publicados com imagens e protege personalizados/removidos',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const older=f.c.previousArchitectureEditions_();
+  for(const old of older){const guide=f.c.getGuide(old.id);f.c.saveGuide({...guide,...old,status:old.id==='KB-0013'?'published':'draft'});}
+  const image=f.c.uploadGuideImage({guideId:'KB-0013',mimeType:'image/png',base64:testPng});
+  let guide=f.c.getGuide('KB-0013');f.c.saveGuide({...guide,markdown:guide.markdown+'\n\n![Imagem](sf-image:'+image.id+')'});
+  guide=f.c.getGuide('KB-0014');f.c.saveGuide({...guide,markdown:guide.markdown+'\nNota personalizada'});
+  guide=f.c.getGuide('KB-0015');f.c.deleteGuide({id:guide.id,confirmId:guide.id,updatedAt:guide.updatedAt});
+  const candidates=f.c.listGuides({}).simpleUpdates;
+  assert.equal(candidates.length,older.length-2);assert.equal(candidates.some(a=>a.id==='KB-0014'||a.id==='KB-0015'),false);
+  f.c.simplifyGuides({confirm:true,guides:candidates});
+  const revised=f.c.getGuide('KB-0013');assert.equal(revised.revision,'1.2');assert.equal(revised.status,'published');assert.match(revised.markdown,new RegExp(image.id));assert.match(revised.markdown,/servidor Progress que atende essas telas/);
+  assert.match(f.c.getGuide('KB-0014').markdown,/Nota personalizada/);assert.equal(f.c.listGuides({}).simpleUpdates.length,0);
+});
 
 function fixture() {
   const properties = {ALLOWED_DOMAINS:'example.com', INITIAL_ADMIN_EMAIL:'admin@example.com'};
@@ -54,7 +128,7 @@ function fixture() {
       getFileById:id=>{if(!driveFiles[id]) throw new Error('Arquivo indisponível');return driveFiles[id];}
     }, Date, console
   });
-  for(const file of ['Auth.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','GuideUpdates.gs','Knowledge.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
+  for(const file of ['Auth.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','GuideUpdates.gs','Knowledge.gs','Suggestions.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
   return {c:context,properties,tables,driveFiles,driveFolders,setEmail:value => {email=value;},get creates(){return creates;},get locked(){return locked;}};
 }
 
@@ -399,8 +473,8 @@ test('publicação em lote valida todas as versões e estados antes de gravar',(
   assert.equal(f.c.getBootstrap().dashboard.publishedArticles,0);
 });
 
-test('catálogo atualizado acrescenta apenas ausentes em bases com 23 ou 24 guias e preserva edições, imagens e remoções',()=>{
-  for (const baseline of [23,24]) {
+test('catálogo atualizado acrescenta apenas ausentes em bases com 23, 24 ou 28 guias e preserva edições, imagens e remoções',()=>{
+  for (const baseline of [23,24,28,34]) {
     const f=fixture();f.c.setupSupportFlow();
     const currentCatalog=f.c.initialGuides_;
     const isExisting=a=>Number(a.id.slice(3))<=baseline;
@@ -498,7 +572,7 @@ test('restaura quatro removidos com texto simplificado, imagens preservadas e se
   const result=f.c.restoreGuides({confirm:true,useSimplified:true,guides:removed});
   assert.equal(result.restored,4);assert.equal(result.simplified,4);
   for(const id of ['KB-0025','KB-0026','KB-0027','KB-0028']) {
-    const g=f.c.getGuide(id);assert.equal(g.status,'draft');assert.equal(g.revision,'1.1');
+    const g=f.c.getGuide(id);assert.equal(g.status,'draft');assert.equal(g.revision,f.c.initialGuides_().find(seed=>seed.id===id).revision);
   }
   assert.match(f.c.getGuide('KB-0025').markdown,new RegExp('sf-image:'+image.id));
   assert.equal(f.c.getGuideImage('KB-0025',image.id).base64,testPng);

@@ -3,10 +3,10 @@ function guideTextWithoutImages_(text) {
 }
 
 function simpleGuideCandidate_(article) {
-  var old=previousGuideEditions_().filter(function (a) {return a.id===article.id;})[0];
+  var current=guideData_(article);
+  var old=previousGuideEditions_().concat(previousArchitectureEditions_()).filter(function (a) {return a.id===article.id && a.revision===current.revision;})[0];
   var next=initialGuides_().filter(function (a) {return a.id===article.id;})[0];
   if(!old || !next || article.status==='deleted') return null;
-  var current=guideData_(article);
   if(current.revision!==old.revision || current.sourceCode!==old.id) return null;
   if(['title','category','keywords'].some(function (key) {return current[key]!==old[key];}) ||
     guideTextWithoutImages_(current.markdown)!==guideTextWithoutImages_(old.markdown)) return null;
@@ -17,13 +17,13 @@ function simpleGuideCandidate_(article) {
 }
 
 function availableSimpleGuideUpdates_(articles) {
-  return articles.filter(function (a) {return /^KB-002[5-8]$/.test(a.id) && simpleGuideCandidate_(a);})
+  return articles.filter(function (a) {return simpleGuideCandidate_(a);})
     .map(function (a) {return {id:a.id,title:a.title,updatedAt:a.updatedAt};});
 }
 
 function simplifyGuides(input) {
   requireUser_('admin');
-  if(!input || input.confirm!==true || !Array.isArray(input.guides) || !input.guides.length || input.guides.length>4) {
+  if(!input || input.confirm!==true || !Array.isArray(input.guides) || !input.guides.length || input.guides.length>50) {
     throw new Error('Confirme os guias que deseja simplificar.');
   }
   var lock=LockService.getScriptLock();lock.waitLock(10000);

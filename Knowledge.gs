@@ -13,11 +13,20 @@ function guideData_(article) {
 function searchText_(text) {
   return String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
+function searchTerms_(text) {
+  var stop=['a','o','as','os','de','da','do','das','dos','e','em','no','na','nos','nas','um','uma','uns','umas','como','para','por','sobre','que','qual','quais','pra','quero','preciso','com','ao','aos','pelo','pela'];
+  var aliases={logs:'log',guias:'guia',aplicacoes:'aplicacao',relatorios:'relatorio',calculos:'calculo',erros:'erro',objetos:'objeto',registros:'registro',telas:'tela',pacotes:'pacote',versoes:'versao',correcoes:'correcao',configuracoes:'configuracao',programas:'programa',usuarios:'usuario',permissoes:'permissao',errado:'divergente',incorreto:'divergente',incorretos:'divergente'};
+  aliases.validando='validar';aliases.verificando='verificar';aliases.conferindo='conferir';aliases.gerando='gerar';
+  return searchText_(text).split(/[^a-z0-9]+/).filter(function (term) {return term && stop.indexOf(term)<0;}).map(function (term) {return aliases[term]||term;});
+}
 
 function listGuides(options) {
-  var user = requireUser_();
+  var user = viewUser_(options);
   options = options || {};
-  var terms = searchText_(String(options.query || '').slice(0, 300)).split(/\s+/).filter(Boolean);
+  var query=String(options.query||'').trim().slice(0,300);
+  var code=/^(?:kb[\s_-]*0*(\d{1,4})|(0\d{3}))$/i.exec(query);
+  var exactCode=code?'KB-'+('0000'+Number(code[1]||code[2])).slice(-4):'';
+  var terms=searchTerms_(query.replace(/\bkb[\s_-]*0*(\d{1,4})\b/gi,function(_,number){return 'KB-'+('0000'+Number(number)).slice(-4);}));
   var stored = rows_('Articles');
   var articles = stored.filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); }).map(guideData_);
   var summary = { total: articles.length, drafts: articles.filter(function (a) { return a.status === 'draft'; }).length,
@@ -33,14 +42,17 @@ function listGuides(options) {
   articles = articles.filter(function (a) {
     if (options.category && a.category !== options.category) return false;
     if (options.status && a.status !== options.status) return false;
-    var haystack = searchText_([a.id, a.title, a.category, a.keywords, a.markdown].join(' '));
-    return terms.every(function (term) { return haystack.indexOf(term) >= 0; });
+    if(exactCode){a.searchScore=1000;return a.id===exactCode;}
+    var fields=[a.title,a.keywords,a.category,a.markdown].map(function (value) {return searchTerms_(value).join(' ');});
+    var haystack=(options.scope==='content'?fields.join(' '):fields.slice(0,2).join(' '))+' '+searchTerms_(a.id).join(' ');
+    a.searchScore=terms.reduce(function (score,term) {return score+(fields[0].indexOf(term)>=0?12:fields[1].indexOf(term)>=0?7:fields[2].indexOf(term)>=0?3:1);},0);
+    return terms.every(function (term) {return haystack.indexOf(term)>=0;});
   });
   return { categories: categories, guidelines: guideGuidelines_(), summary: summary, initialImport: initialImport,
     simpleUpdates: user.role === 'admin' ? availableSimpleGuideUpdates_(stored) : [],
     removedGuides: user.role === 'admin' ? stored.filter(function (a) {return a.status === 'deleted';})
       .map(function (a) {return {id:a.id,title:a.title,category:a.category,updatedAt:a.updatedAt};}) : [],
-    articles: articles.sort(function (a,b) { return a.id.localeCompare(b.id); }).map(function (a) {
+    articles: articles.sort(function (a,b) { return (b.searchScore||0)-(a.searchScore||0)||a.id.localeCompare(b.id); }).map(function (a) {
     return { id: a.id, title: a.title, category: a.category, keywords: a.keywords, status: a.status, updatedAt: a.updatedAt };
   }) };
 }
@@ -76,8 +88,8 @@ function publishGuides(input) {
   } finally { lock.releaseLock(); }
 }
 
-function getGuide(id) {
-  var user = requireUser_();
+function getGuide(id, options) {
+  var user = viewUser_(options);
   var article = rows_('Articles').filter(function (a) { return a.id === id && a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); })[0];
   if (!article) throw new Error('Guia não encontrado ou ainda não publicado.');
   return guideData_(article);

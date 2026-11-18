@@ -1,0 +1,22 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+test('administrador alterna prévia, envia escopo de leitura e retorna sem modificar conta',async()=>{
+  const nodes=new Map(),events={},calls=[];let knowledge;
+  const node=id=>{if(!nodes.has(id))nodes.set(id,{innerHTML:'',textContent:'',dataset:{},handlers:{},addEventListener(name,fn){this.handlers[name]=fn;},setAttribute(){},removeAttribute(){},classList:{toggle(){},remove(){}}});return nodes.get(id);};
+  const location={hash:''};
+  const document={getElementById:node,querySelectorAll:()=>[],documentElement:{dataset:{}},body:{classList:{remove(){},toggle(){}}},addEventListener(){}};
+  const run={withSuccessHandler(fn){this.success=fn;return this;},withFailureHandler(){return this;},getBootstrap(options){calls.push({method:'bootstrap',options});this.success({user:{email:'admin@example.com',role:options?.preview?'support':'admin',canPreview:true},version:'test',dashboard:{publishedArticles:0,categories:0},recentArticles:[]});},listGuides(options){calls.push({method:'list',options});this.success({});},getGuide(id,options){calls.push({method:'guide',options});this.success({});}};
+  const window={google:{script:{run}},addEventListener:(name,fn)=>events[name]=fn,SupportFlowKnowledge:{render:options=>knowledge=options}};
+  vm.runInNewContext(fs.readFileSync('Scripts.html','utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),{window,document,google:{script:{run}},location,localStorage:{getItem:()=> 'light'},setTimeout});
+  const tick=()=>new Promise(resolve=>setImmediate(resolve));await tick();
+  assert.equal(node('user-preview-toggle').hidden,false);assert.match(node('navigation').innerHTML,/#admin/);
+  node('user-preview-toggle').handlers.click();await tick();
+  assert.equal(node('user-preview-banner').hidden,false);assert.doesNotMatch(node('navigation').innerHTML,/#admin/);
+  location.hash='#knowledge';events.hashchange();assert.equal(knowledge.user.role,'support');
+  await knowledge.rpc('listGuides',{query:'teste'});assert.equal(calls.at(-1).options.preview,true);
+  await knowledge.rpc('getGuide','KB-0001');assert.equal(calls.at(-1).options.preview,true);
+  await assert.rejects(()=>knowledge.rpc('saveGuide',{}),/Administração/);
+  node('user-preview-toggle').handlers.click();await tick();assert.equal(knowledge.user.role,'admin');assert.equal(node('user-preview-banner').hidden,true);assert.match(node('navigation').innerHTML,/#admin/);
+});

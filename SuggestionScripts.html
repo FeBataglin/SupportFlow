@@ -1,0 +1,37 @@
+<script>
+window.SupportFlowSuggestions=(()=>{
+  const esc=value=>String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const types={improvement:'Melhoria no sistema',guide:'Preciso de um guia',diagnostic:'Preciso de um roteiro de diagnóstico',difficulty:'Dificuldade no atendimento'};
+  const statuses={new:'Recebida',reviewing:'Em análise',planned:'Planejada',done:'Concluída',closed:'Encerrada'};
+  async function render({rpc,user,content,isCurrent}){
+    const admin=user.role==='admin';
+    content.innerHTML=`<div class="page-heading"><div><h1>Sugestões e dificuldades</h1><p>Conte o que pode melhorar e quais assuntos precisam de orientação.</p></div></div><section class="panel guide-editor"><h2>Enviar uma sugestão</h2><p>Informe o cenário e o que ajudaria no atendimento. As sugestões ficam salvas para acompanhamento. Não inclua logs, senhas ou dados de clientes.</p><form id="suggestion-form" class="suggestion-form"><label>Tipo<select name="type">${Object.entries(types).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></label><label>Título<input name="title" required maxlength="150" placeholder="Resuma a ideia ou dificuldade"></label><label>Programa ou assunto (opcional)<input name="program" maxlength="200"></label><label>Descreva a ideia ou dificuldade<textarea name="details" required minlength="10" maxlength="4000" rows="5"></textarea></label><label>O que ajudaria? (opcional)<textarea name="expected" maxlength="1500" rows="3" placeholder="Ex.: guia com um exemplo ou roteiro para conferir os parâmetros"></textarea></label><div><button class="button" type="submit" id="send-suggestion">Enviar sugestão</button></div><p id="suggestion-status" role="status"></p></form></section><div class="section-heading"><h2>${admin?'Sugestões recebidas':'Minhas sugestões'}</h2><button type="button" class="button secondary" id="refresh-suggestions">Atualizar lista</button></div><div id="suggestion-list" role="region" aria-label="Sugestões enviadas"></div>`;
+    const $=id=>content.querySelector('#'+id),form=$('suggestion-form');
+    const key=()=>window.crypto&&window.crypto.randomUUID?window.crypto.randomUUID():'suggestion_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+    let requestId=key(),sending=false,sequence=0;
+    async function load(){
+      const ticket=++sequence;$('suggestion-list').innerHTML='<p role="status">Carregando sugestões…</p>';
+      try{
+        const data=await rpc('listSuggestions');if(!isCurrent()||ticket!==sequence)return;
+        $('suggestion-list').innerHTML=`<p>${data.items.length} de ${data.total} sugestão(ões), mais recentes primeiro.</p>`+(data.items.length?data.items.map(item=>`<article class="panel suggestion-item"><div class="guide-meta"><span>${esc(types[item.type])}</span><span>${esc(statuses[item.status])}</span><span>${esc(new Date(item.createdAt).toLocaleString('pt-BR'))}</span>${admin?'<span>'+esc(item.author)+'</span>':''}</div><h3>${esc(item.title)}</h3>${item.program?'<p><strong>Programa/assunto:</strong> '+esc(item.program)+'</p>':''}<p class="suggestion-text">${esc(item.details)}</p>${item.expected?'<p class="suggestion-text"><strong>O que ajudaria:</strong> '+esc(item.expected)+'</p>':''}${item.response?'<div class="notice suggestion-text"><strong>Retorno:</strong> '+esc(item.response)+'</div>':''}${admin?`<details><summary>Registrar andamento</summary><form data-suggestion="${esc(item.id)}" class="suggestion-review"><label>Situação<select name="status">${Object.entries(statuses).map(([value,label])=>`<option value="${value}" ${value===item.status?'selected':''}>${label}</option>`).join('')}</select></label><label>Retorno para o autor<textarea name="response" maxlength="2000" rows="3">${esc(item.response)}</textarea></label><button type="submit" class="button secondary">Salvar andamento</button><p role="status" data-status></p></form></details>`:''}</article>`).join(''):'<section class="panel"><p>Nenhuma sugestão enviada ainda.</p></section>');
+        content.querySelectorAll('[data-suggestion]').forEach(review=>review.addEventListener('submit',async event=>{
+          event.preventDefault();const button=review.querySelector('button');if(button.disabled)return;button.disabled=true;
+          const item=data.items.find(item=>item.id===review.dataset.suggestion),status=review.querySelector('[data-status]');
+          try{await rpc('updateSuggestion',{id:item.id,updatedAt:item.updatedAt,status:review.elements.status.value,response:review.elements.response.value});if(isCurrent())await load();}
+          catch(error){if(isCurrent())status.textContent=error.message||String(error);}finally{button.disabled=false;}
+        }));
+      }catch(error){if(isCurrent()&&ticket===sequence)$('suggestion-list').innerHTML='<p role="alert">'+esc(error.message||error)+'</p>';}
+    }
+    $('refresh-suggestions').addEventListener('click',load);
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();if(sending)return;sending=true;form.querySelectorAll('input,textarea,select,button').forEach(control=>{control.disabled=true;});$('send-suggestion').disabled=true;$('suggestion-status').textContent='Enviando…';
+      const input={requestId};for(const key of ['type','title','program','details','expected'])input[key]=form.elements[key].value;
+      try{await rpc('createSuggestion',input);if(!isCurrent())return;form.reset();requestId=key();$('suggestion-status').textContent='Sugestão enviada. Você pode acompanhar o andamento abaixo.';await load();}
+      catch(error){if(isCurrent())$('suggestion-status').textContent=error.message||String(error);}
+      finally{sending=false;if(isCurrent()){form.querySelectorAll('input,textarea,select,button').forEach(control=>{control.disabled=false;});$('send-suggestion').disabled=false;}}
+    });
+    await load();
+  }
+  return {render};
+})();
+</script>

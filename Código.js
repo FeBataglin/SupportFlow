@@ -9,8 +9,8 @@ function include_(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
-function getBootstrap() {
-  var user = requireUser_();
+function getBootstrap(options) {
+  var user = viewUser_(options);
   var articles = rows_('Articles').filter(function (a) { return a.status === 'published'; });
   return {
     version: '1.0.0', user: user,

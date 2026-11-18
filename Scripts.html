@@ -5,17 +5,27 @@
     dashboard: {title:'Visão geral',icon:'▦'},
     knowledge: {title:'Base de conhecimento',icon:'▤',description:'Guias de testes e procedimentos de atendimento.'},
     logs: {title:'Analisador de logs',icon:'≋',description:'Análise local de erros, ocorrências e contexto.'},
+    diagnostics: {title:'Diagnóstico assistido',icon:'⑂',description:'Roteiros de testes conforme o sintoma e os resultados observados.'},
+    suggestions: {title:'Sugestões e dificuldades',icon:'✎',description:'Ideias de melhoria e assuntos que precisam de orientação.'},
     admin: {title:'Administração',icon:'⚙'}
   };
-  let state = null, sequence = 0;
+  let state = null, sequence = 0, preview = false;
   const $ = id => document.getElementById(id);
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const date = value => { const d = new Date(value); return isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}); };
   function rpc(method,...args) {
+    if(preview){
+      if(!['getBootstrap','listGuides','getGuide','getGuideImage','listSuggestions','createSuggestion'].includes(method))return Promise.reject(new Error('Volte à visão de Administração para realizar esta ação.'));
+      if(['getBootstrap','listGuides','listSuggestions'].includes(method))args[0]={...(args[0]||{}),preview:true};
+      else if(method==='getGuide')args[1]={preview:true};
+      else if(method==='getGuideImage')args[2]={preview:true};
+    }
+    const labels={saveGuide:'Salvando guia…',listGuides:'Pesquisando guias…',getGuide:'Carregando guia…',getGuideImage:'Carregando imagens…',uploadGuideImage:'Enviando imagem…',saveUser:'Salvando usuário…',createSuggestion:'Enviando sugestão…',updateSuggestion:'Atualizando sugestão…',listSuggestions:'Carregando sugestões…',deleteGuides:'Removendo guias…',publishGuides:'Publicando guias…',simplifyGuides:'Revisando guias…',importInitialGuides:'Importando guias…'};
+    const finish=window.SupportFlowActivity?window.SupportFlowActivity.begin(labels[method]||'Processando…'):()=>{};
     return new Promise((resolve,reject) => {
       if (!window.google || !google.script || !google.script.run) return reject(new Error('Abra o aplicativo pela URL de teste do Google Apps Script. A validação de acesso precisa do servidor.'));
       google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
-    });
+    }).finally(finish);
   }
   function heading(label,title,description) {
     return `<div class="page-heading"><div><h1>${esc(title)}</h1>${description ? `<p>${esc(description)}</p>` : ''}</div></div>`;
@@ -24,9 +34,9 @@
     return `<div class="empty"><div class="empty-icon" aria-hidden="true">▤</div><h3>${esc(title)}</h3><p>${esc(description)}</p></div>`;
   }
   function dashboard() {
-    const cards = ['knowledge','logs'].map(id => {
+    const cards = ['knowledge','logs','diagnostics','suggestions'].map(id => {
       const p = pages[id];
-      return `<a href="#${id}" class="panel card" style="text-decoration:none;color:inherit"><div style="font-size:25px;color:var(--cyan);margin-bottom:18px" aria-hidden="true">${p.icon}</div><h3>${p.title}</h3><p>${p.description}</p><span class="card-link">${id === 'knowledge' ? 'Consultar guias' : id === 'logs' ? 'Analisar log' : 'Planejado · '+p.version}<span>↗</span></span></a>`;
+      return `<a href="#${id}" class="panel card" style="text-decoration:none;color:inherit"><div style="font-size:25px;color:var(--cyan);margin-bottom:18px" aria-hidden="true">${p.icon}</div><h3>${p.title}</h3><p>${p.description}</p><span class="card-link">${id === 'knowledge' ? 'Consultar guias' : id === 'logs' ? 'Analisar log' : id === 'suggestions' ? 'Enviar sugestão' : 'Iniciar diagnóstico'}<span>↗</span></span></a>`;
     }).join('');
     const recent = state.recentArticles.length ? `<div class="table-wrap"><table><thead><tr><th>Título</th><th>Categoria</th><th>Atualização</th></tr></thead><tbody>${state.recentArticles.map(a => `<tr><td><a href="#knowledge/${encodeURIComponent(a.id)}" target="_self">${esc(a.title)}</a></td><td>${esc(a.category)}</td><td>${esc(date(a.updatedAt))}</td></tr>`).join('')}</tbody></table></div>` : empty('Nenhuma orientação publicada','Os guias publicados pela Administração aparecerão aqui.');
     $('content').innerHTML = heading('','Visão geral','') +
@@ -78,22 +88,30 @@
       try {code = route[1] ? decodeURIComponent(route[1]) : '';} catch (_) {code = '__invalid__';}
       window.SupportFlowKnowledge.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence,onChange:load,id:code});
     } else if (id === 'logs') window.SupportFlowLogs.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence});
+    else if (id === 'diagnostics') window.SupportFlowDiagnostics.render({content:$('content'),isCurrent:() => ticket === sequence});
+    else if (id === 'suggestions') window.SupportFlowSuggestions.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence});
 
   }
   async function load() {
-    ++sequence; state = null; $('navigation').innerHTML = '';
+    const loadTicket=++sequence; state = null; $('navigation').innerHTML = '';$('user-preview-toggle').disabled=true;
     $('identity-name').textContent = 'Conectando…'; $('identity-role').textContent = 'Validando acesso';
     $('content').innerHTML = '<div class="status-panel" role="status"><span class="loader"></span><p>Validando acesso e carregando o workspace…</p></div>';
     try {
-      state = await rpc('getBootstrap');
+      const bootstrap=await rpc('getBootstrap');if(loadTicket!==sequence)return;state=bootstrap;
+      const canPreview=state.user.canPreview===true||state.user.role==='admin';
+      $('user-preview-toggle').hidden=!canPreview;
+      $('user-preview-toggle').textContent=preview?'Voltar à Administração':'Ver como Atendimento';
+      $('user-preview-toggle').disabled=false;
+      $('user-preview-banner').hidden=!(preview&&canPreview);
       $('identity-name').textContent = state.user.email; $('identity-name').title = state.user.email;
-      $('identity-role').textContent = state.user.role === 'admin' ? 'Administração' : 'Atendimento';
+      $('identity-role').textContent = preview&&canPreview?'Atendimento (prévia)':state.user.role === 'admin' ? 'Administração' : 'Atendimento';
       $('avatar').textContent = state.user.email.slice(0,2).toUpperCase();
       $('navigation').innerHTML = Object.entries(pages).filter(([id]) => id !== 'admin' || state.user.role === 'admin').map(([id,p]) => `<a class="nav-link" data-page="${id}" href="#${id}"><span class="nav-icon" aria-hidden="true">${p.icon}</span>${p.title}</a>`).join('');
       render();
-    } catch (error) { state = null; $('identity-name').textContent = 'Acesso indisponível'; $('identity-role').textContent = 'Verifique a configuração'; showError(error); }
+    } catch (error) {if(loadTicket!==sequence)return;state = null;$('user-preview-toggle').disabled=false; $('identity-name').textContent = 'Acesso indisponível'; $('identity-role').textContent = 'Verifique a configuração'; showError(error); }
   }
   let theme = 'light';
+  $('user-preview-toggle').addEventListener('click',()=>{if(state&&!(state.user.canPreview||state.user.role==='admin'))return;preview=!preview;load();});
   try { theme = localStorage.getItem('supportflow-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (_) {}
   document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
   $('theme-toggle').addEventListener('click',() => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try {localStorage.setItem('supportflow-theme',next);} catch (_) {} });

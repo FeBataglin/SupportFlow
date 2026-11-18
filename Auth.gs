@@ -1,5 +1,12 @@
 function normalizeEmail_(value) { return String(value || '').trim().toLowerCase(); }
 
+/** Prévia somente reduz a visão de leitura; nunca altera o cadastro/permissão real. */
+function viewUser_(options){
+  var user=requireUser_(),canPreview=user.role==='admin';
+  return {email:user.email,role:canPreview&&options&&options.preview===true?'support':user.role,
+    canPreview:canPreview,preview:!!(canPreview&&options&&options.preview===true)};
+}
+
 function validEmail_(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 
 function allowedDomain_(email) {

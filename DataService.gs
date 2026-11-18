@@ -3,6 +3,7 @@ var SCHEMA_ = {
   Categories: ['id', 'name', 'createdAt', 'updatedAt'],
   Articles: ['id', 'title', 'category', 'status', 'content', 'createdAt', 'updatedAt'],
   GuideImages: ['id', 'guideId', 'fileId', 'mimeType', 'size', 'createdBy', 'createdAt'],
+  Suggestions: ['id','requestId','author','type','title','program','details','expected','status','response','createdAt','updatedAt'],
   LogRules: ['id', 'name', 'pattern', 'severity', 'explanation', 'articleId', 'active', 'createdAt', 'updatedAt'],
   DiagnosticFlows: ['id', 'title', 'status', 'definitionJson', 'createdAt', 'updatedAt'],
   DiagnosticHistory: ['id', 'userEmail', 'flowId', 'summary', 'createdAt'],

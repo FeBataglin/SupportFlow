@@ -1,0 +1,170 @@
+<script>
+window.SupportFlowDiagnostics = (() => {
+  'use strict';
+  const catalog=window.SupportFlowDiagnosticFlows;
+  const guideNames={'KB-0001':'DevTools','KB-0002':'Console','KB-0003':'Network','KB-0005':'Cache e cookies','KB-0006':'Janela anônima','KB-0007':'Carregamento de componentes','KB-0008':'Status HTTP','KB-0009':'Payload e Response','KB-0010':'Autenticação','KB-0011':'Endpoints','KB-0012':'Postman','KB-0013':'Logs PASOE','KB-0014':'Erros ABL','KB-0017':'Versões','KB-0020':'Permissões','KB-0021':'Triagem','KB-0022':'Validação de correções','KB-0024':'Aplicação de WAR','KB-0025':'Lentidão e timeout','KB-0026':'Bloqueios do navegador','KB-0027':'Network e logs','KB-0028':'Camadas da aplicação'};
+  let active=null;
+  Object.assign(guideNames,{'KB-0015':'PROPATH','KB-0016':'Informações do Ambiente','KB-0018':'Objetos desatualizados','KB-0019':'Customizações e UPCs','KB-0023':'Solicitação ao cliente'});
+  Object.assign(guideNames,{'KB-0029':'Simulação reproduzível','KB-0030':'Telas e programas Progress','KB-0031':'Resultado sem mensagem','KB-0032':'Divergência funcional','KB-0033':'Registro não gerado / SPED','KB-0034':'Cálculo divergente'});
+  guideNames['KB-0035']='Relatórios no servidor RPW';
+  const esc=value=>String(value==null?'':value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function create(symptomId,context={}) {
+    const symptom=catalog.symptoms.find(item=>item.id===symptomId);
+    if(!symptom)throw new Error('Selecione um sintoma válido.');
+    const meta={};
+    for(const key of ['program','environment','action','expected','observed'])meta[key]=String(context[key]||'').slice(0,['action','expected','observed'].includes(key)?1000:200);
+    return {symptom:symptom.id,context:meta,current:symptom.start,answers:[],draft:{choice:'',note:''},version:catalog.version};
+  }
+  function choose(session,index,note='') {
+    const node=catalog.nodes[session.current];
+    if(!node.choices||!Number.isInteger(index)||!node.choices[index])throw new Error('Selecione o resultado observado.');
+    const choice=node.choices[index];
+    if((node.requireEvidence||choice.requireEvidence)&&!choice.noEvidence&&(!choice.notApplicable||choice.requireEvidence)&&!String(note).trim())throw new Error('Registre a evidência ou o motivo da pendência nas observações para continuar.');
+    session.answers.push({node:session.current,choice:index,note:String(note).slice(0,2000)});
+    session.current=node.choices[index].next;session.draft={choice:'',note:''};
+  }
+  function back(session){
+    const previous=session.answers.pop();if(!previous)return;
+    session.current=previous.node;session.draft={choice:String(previous.choice),note:previous.note};
+  }
+  function readiness(session){
+    return catalog.checks.filter(check=>check.nodes.includes(session.current)||session.answers.some(answer=>check.nodes.includes(answer.node))).map(check=>{
+      const answer=[...session.answers].reverse().find(a=>check.nodes.includes(a.node));
+      if(!answer)return {...check,status:'Em andamento',detail:'Etapa atual; resultado ainda não registrado.'};
+      const choice=catalog.nodes[answer.node].choices[answer.choice];
+      return {...check,status:choice.pending?'Pendente':choice.notApplicable?'Não aplicável':'Registrado',detail:choice.label+(answer.note?' — '+answer.note:'')};
+    });
+  }
+  function requestText(session){
+    const desktop=['desktopLog','desktopLogPending'].includes(session.current);
+    const rpw=['rpwLog','rpwLogPendingEnd'].includes(session.current);
+    const lines=['Olá! Para investigar o problema, poderia nos enviar:',''];
+    if(session.context.program)lines.push('Programa: '+session.context.program);
+    if(session.context.environment)lines.push('Ambiente: '+session.context.environment);
+    if(session.context.program||session.context.environment)lines.push('');
+    lines.push(rpw?'1. O log do servidor RPW que executou o relatório, cobrindo alguns minutos antes e depois do problema. Se disponível, informe também o identificador da execução.':desktop?'1. Os registros do servidor Progress que atende essa tela, cobrindo o intervalo do problema. Se necessário, peça ajuda ao responsável por esse servidor.':'1. O log da instância PASOE do servidor web que atende essa aplicação, cobrindo alguns minutos antes e depois do problema. Se necessário, peça ajuda ao responsável pelo ambiente.',
+      '', '2. A data e o horário exato do ocorrido, com o fuso'+(session.context.environment?'.':', e o ambiente em que aconteceu.'),
+      '', 'Se apareceu uma mensagem de erro, inclua o texto ou uma captura de tela.',
+      '', 'Antes de enviar, revise os arquivos para não incluir senhas, tokens ou dados sensíveis. Obrigado!');
+    return lines.join('\n');
+  }
+  function report(session){
+    const symptom=catalog.symptoms.find(item=>item.id===session.symptom),node=catalog.nodes[session.current];
+    const lines=['Diagnóstico assistido — SupportFlow','','Roteiro '+session.version+' · '+symptom.title,'',
+      'Programa/endpoint: '+(session.context.program||'Não informado'),
+      'Ambiente: '+(session.context.environment||'Não informado'),
+      'Servidor da investigação: '+environmentType(session),
+      'Ação / passos informados: '+(session.context.action||'Não informados'),
+      'Resultado esperado: '+(session.context.expected||'Não informado'),
+      'Resultado observado: '+(session.context.observed||'Não informado'),'','Testes e resultados informados:'];
+    session.answers.forEach((answer,index)=>{
+      const step=catalog.nodes[answer.node];
+      lines.push('',(index+1)+'. '+step.title,'Resultado: '+step.choices[answer.choice].label);
+      if(answer.note)lines.push('Evidência/observação: '+answer.note);
+    });
+    if(!session.answers.length)lines.push('Nenhum teste respondido.');
+    if(node.choices)lines.push('','Pendente: '+node.title,'Próximo teste sugerido: '+node.instruction);
+    else lines.push('','Próximos passos: '+node.title,'',node.recommendation);
+    const checks=readiness(session);
+    if(checks.length){lines.push('','Verificações da investigação — informações registradas, sem validação automática:');checks.forEach(check=>lines.push('',check.label+': '+check.status,check.detail));}
+    const outstanding=session.answers.filter(answer=>catalog.nodes[answer.node].choices[answer.choice].pending);
+    if(outstanding.length){lines.push('','Pendências/impedimentos registrados no roteiro:');outstanding.forEach(answer=>lines.push('',catalog.nodes[answer.node].title+': '+catalog.nodes[answer.node].choices[answer.choice].label+(answer.note?' — '+answer.note:'')));}
+    const guides=new Set(session.answers.flatMap(answer=>catalog.nodes[answer.node].guides));
+    node.guides.forEach(code=>guides.add(code));lines.push('','Guias relacionados: '+[...guides].join(', '),'Roteiro baseado nas respostas do atendimento. Não confirma a causa raiz.');
+    return lines.join('\n');
+  }
+  function environmentType(session){
+    if(session.symptom==='rpw'||session.current.startsWith('rpw')||session.answers.some(answer=>answer.node.startsWith('rpw')))return 'Servidor RPW que executa o relatório (conferência própria de objetos, PROPATH e logs)';
+    for(const answer of [...session.answers].reverse()){
+      const runtime=catalog.nodes[answer.node].choices[answer.choice].runtime;
+      if(runtime)return runtime==='rpw'?'Servidor RPW que executa o relatório':runtime==='desktop'?'Servidor Progress das telas (separado do web/PASOE)':runtime==='web'?'Servidor web/PASOE (separado do servidor das telas Progress)':'Camada/servidor a confirmar com o responsável';
+    }
+    const webNodes=['network','console','private','server','packageCheck','propath','requestLog','analyzeLog','loggedObject','update','timing'];
+    return webNodes.includes(session.current)||session.answers.some(answer=>webNodes.includes(answer.node))?'Servidor web/PASOE (não representa o servidor das telas Progress)':'Confirmar o servidor que executa o programa';
+  }
+  function render({content,isCurrent=()=>true}){
+    let summary=false,confirmReset=false;
+    const $=id=>content.querySelector('#'+id);
+    const links=codes=>`<div class="diag-guides"><span>Guias relacionados</span>${codes.map(code=>`<a href="#knowledge/${code}" target="_self">${code} · ${esc(guideNames[code]||'Consultar guia')}</a>`).join('')}</div>`;
+    const heading=()=>'<div class="page-heading"><div><h1>Diagnóstico assistido</h1><p>Escolha o sintoma e siga os testes conforme os resultados observados.</p><p>Identifique onde ocorre a execução: servidor web/PASOE, servidor das telas Progress ou RPW. Confira objetos, PROPATH, pacotes e logs no ambiente correspondente.</p></div></div>';
+    function paint(focus=false){
+      if(!isCurrent())return;
+      if(!active){
+        content.innerHTML=heading()+`<section class="panel diag-context"><h2>Contexto do atendimento</h2><p>Informações opcionais para compor o resumo. Não inclua senhas, tokens ou dados pessoais.</p><div class="diag-context-grid"><label>Programa ou endpoint<input id="diag-program" maxlength="200" placeholder="Ex.: programa ou caminho da API"></label><label>Ambiente<input id="diag-environment" maxlength="200" placeholder="Ex.: homologação, versão e instância"></label></div><label>Ação ou passos para reproduzir<textarea id="diag-action" maxlength="1000" rows="3" placeholder="Descreva a sequência e os parâmetros utilizados"></textarea></label><div class="diag-context-grid"><label>Resultado esperado<textarea id="diag-expected" maxlength="1000" rows="2"></textarea></label><label>Resultado observado<textarea id="diag-observed" maxlength="1000" rows="2"></textarea></label></div></section><h2 class="diag-section-title">O que está acontecendo?</h2><div class="diag-symptoms">${catalog.symptoms.map(item=>`<button type="button" class="panel diag-symptom" data-symptom="${item.id}"><strong>${esc(item.title)}</strong><span>${esc(item.description)}</span><span class="diag-start">Iniciar roteiro →</span></button>`).join('')}</div><p class="diag-help">Sem IA e sem histórico no servidor. As respostas ficam somente nesta aba até limpar ou recarregar a página.</p>`;
+        content.querySelectorAll('[data-symptom]').forEach(button=>button.addEventListener('click',()=>{
+          active=create(button.dataset.symptom,{program:$('diag-program').value,environment:$('diag-environment').value,action:$('diag-action').value,expected:$('diag-expected').value,observed:$('diag-observed').value});paint(true);
+        }));return;
+      }
+      const session=active,symptom=catalog.symptoms.find(item=>item.id===session.symptom),node=catalog.nodes[session.current];
+      const pending=readiness(session).some(check=>check.status==='Pendente')||session.current==='collect'||session.answers.some(answer=>catalog.nodes[answer.node].choices[answer.choice].pending);
+      content.innerHTML=heading()+`<div class="diag-toolbar"><div><strong>${esc(symptom.title)}</strong><span>${session.answers.length} teste(s) respondido(s)${node.choices?' · Em andamento':pending?' · Com pendências':' · Roteiro concluído'}</span></div><button type="button" class="button secondary" id="diag-new">Novo diagnóstico</button></div>
+        ${confirmReset?'<section class="panel diag-reset"><p>Descartar as respostas deste diagnóstico e começar outro? Copie o resumo antes, se precisar.</p><div class="guide-actions"><button type="button" class="button secondary" id="diag-keep">Continuar este diagnóstico</button><button type="button" class="button danger" id="diag-discard">Descartar e começar outro</button></div></section>':''}
+        <div class="diag-layout"><section class="panel diag-current"><h2 id="diag-step-title" tabindex="-1">${summary?'Resumo do atendimento':esc(node.title)}</h2>
+        ${!summary&&node.analyzer?'<div class="diag-tool-link"><a href="#logs" target="_self" class="button secondary">Abrir Analisador de logs</a><p>Retorne pelo menu Diagnóstico assistido e registre os achados. Abrir o analisador não marca o log como analisado nem transfere arquivos automaticamente.</p></div>':''}
+        ${!summary&&node.requestTemplate?`<details class="diag-request"><summary>Texto para solicitar ao cliente</summary><label class="diag-report-label">Revise antes de enviar<textarea id="diag-request" rows="12" readonly>${esc(requestText(session))}</textarea></label><button type="button" class="button secondary" id="diag-copy-request">Copiar solicitação</button><p id="diag-request-status" role="status"></p></details>`:''}
+        ${summary?`<p>${node.choices?'Resumo parcial: o próximo teste ainda não foi respondido.':'Revise as informações antes de copiar para o chamado.'}</p><label class="diag-report-label">Resumo para copiar<textarea id="diag-report" rows="18" readonly spellcheck="false">${esc(report(session))}</textarea></label><div class="guide-actions"><button type="button" class="button" id="diag-copy">Copiar resumo</button><button type="button" class="button secondary" id="diag-return">Voltar ao roteiro</button></div><p id="diag-copy-status" role="status"></p>`:
+          node.choices?`<p>${esc(node.instruction)}</p>${links(node.guides)}<form id="diag-form"><fieldset class="diag-options"><legend>Resultado observado</legend>${node.choices.map((choice,index)=>`<label class="diag-option"><input type="radio" name="diag-choice" value="${index}" ${String(index)===session.draft.choice?'checked':''}><span>${esc(choice.label)}</span></label>`).join('')}</fieldset><label class="diag-note-label">${node.requireEvidence?'Evidência ou motivo da pendência (necessário para registrar a verificação)':'Evidência ou observação (opcional)'}<span id="diag-note-help" class="diag-note-help" role="status" hidden></span><textarea id="diag-note" aria-describedby="diag-note-help" aria-invalid="false" rows="3" maxlength="2000" placeholder="Ex.: instância, caminhos conferidos, horário/fuso, mensagem e linhas revisadas">${esc(session.draft.note)}</textarea></label><div class="guide-actions"><button type="button" class="button secondary" id="diag-back" ${session.answers.length?'':'disabled'}>Voltar</button><button type="submit" class="button">Continuar</button><button type="button" class="text-button" id="diag-summary">Ver resumo parcial</button></div><p id="diag-status" role="status"></p></form>`:
+          `<p class="diag-end-label">Próximos passos</p><p>${esc(node.recommendation)}</p>${links(node.guides)}<p>Este roteiro organiza as evidências informadas; não confirma a causa do problema.</p><div class="guide-actions"><button type="button" class="button secondary" id="diag-back">Revisar última resposta</button><button type="button" class="button" id="diag-summary">Gerar resumo do atendimento</button></div>`}
+        </section><section class="panel diag-history" aria-label="Testes registrados"><h2>Testes registrados</h2>${session.answers.length?`<ol>${session.answers.map(answer=>{const step=catalog.nodes[answer.node];return `<li><strong>${esc(step.title)}</strong><span>${esc(step.choices[answer.choice].label)}</span>${answer.note?`<p>${esc(answer.note)}</p>`:''}</li>`;}).join('')}</ol>`:'<p>Os resultados aparecerão aqui conforme você avançar.</p>'}<p class="diag-help">Você pode consultar os guias e voltar pelo menu Diagnóstico assistido sem perder as respostas nesta aba. Guias removidos ou não publicados podem estar indisponíveis.</p></section></div>`;
+      const checks=readiness(session);
+      if(checks.length){
+        const checklist=`<div class="diag-readiness"><h3>Verificações da investigação</h3><p>Somente as etapas percorridas neste diagnóstico. Os registros dependem das respostas informadas.</p><ul>${checks.map(check=>`<li><span>${esc(check.label)}</span><strong class="${check.status==='Pendente'?'diag-pending':''}">${esc(check.status)}</strong></li>`).join('')}</ul><p>Pendente indica uma dificuldade ou verificação não realizada que você registrou. Itens fora do caminho escolhido não são cobrados.</p></div>`;
+        const marker='<h2>Testes registrados</h2>';
+        content.innerHTML=content.innerHTML.replace(marker,checklist+marker);
+      }
+      const saveDraft=()=>{if(node.choices&&!summary){const selected=content.querySelector('input[name="diag-choice"]:checked');session.draft={choice:selected?selected.value:'',note:$('diag-note').value};}};
+      if(!summary&&node.requestTemplate)$('diag-copy-request').addEventListener('click',async()=>{
+        const target=$('diag-request-status');
+        try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw Error('Clipboard indisponível');await navigator.clipboard.writeText(requestText(session));if(isCurrent()&&active===session)target.textContent='Solicitação copiada. Revise antes de enviar ao cliente.';}
+        catch(_){if(isCurrent()&&active===session){$('diag-request').focus();$('diag-request').select();target.textContent='Texto selecionado. Use Ctrl+C ou o comando Copiar.';}}
+      });
+      $('diag-new').addEventListener('click',()=>{saveDraft();confirmReset=true;paint();});
+      if(confirmReset){$('diag-keep').addEventListener('click',()=>{confirmReset=false;paint();});$('diag-discard').addEventListener('click',()=>{active=null;summary=false;confirmReset=false;paint();});}
+      if(summary){
+        $('diag-return').addEventListener('click',()=>{summary=false;paint(true);});
+        $('diag-copy').addEventListener('click',async()=>{
+          const target=$('diag-copy-status'),text=report(session);
+          try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw Error('Clipboard indisponível');await navigator.clipboard.writeText(text);if(isCurrent()&&active===session&&summary)target.textContent='Resumo copiado.';}
+          catch(_){if(isCurrent()&&active===session&&summary){$('diag-report').focus();$('diag-report').select();target.textContent='Cópia automática indisponível. O texto foi selecionado; use Ctrl+C ou o comando Copiar.';}}
+        });
+      }else{
+        $('diag-back').addEventListener('click',()=>{back(session);paint(true);});
+        $('diag-summary').addEventListener('click',()=>{saveDraft();summary=true;paint(true);});
+        if(node.choices){
+          const noteRequired=()=>{
+            const choice=node.choices[Number(session.draft.choice)];
+            return session.draft.choice!==''&&choice&&(node.requireEvidence||choice.requireEvidence)&&!choice.noEvidence&&(!choice.notApplicable||choice.requireEvidence);
+          };
+          const updateNoteHelp=()=>{
+            const required=noteRequired(),help=$('diag-note-help');
+            help.hidden=!(required||session.draft.choice===''&&node.requireEvidence);
+            help.textContent='Preencha o campo abaixo com a evidência encontrada ou o motivo da pendência. Ex.: instância e caminhos conferidos, ou horário, mensagem e linhas do log revisadas.';
+            $('diag-note').setAttribute('aria-required',String(!!required));
+            $('diag-note').setAttribute('aria-invalid','false');
+            $('diag-status').textContent='';
+          };
+          $('diag-note').addEventListener('input',()=>{saveDraft();updateNoteHelp();});
+          content.querySelectorAll('input[name="diag-choice"]').forEach(input=>input.addEventListener('change',()=>{saveDraft();updateNoteHelp();}));
+          updateNoteHelp();
+          $('diag-form').addEventListener('submit',event=>{
+            event.preventDefault();saveDraft();
+            if(session.draft.choice===''){$('diag-status').textContent='Selecione o resultado observado para continuar.';return;}
+            try{choose(session,Number(session.draft.choice),session.draft.note);paint(true);}
+            catch(error){
+              $('diag-status').textContent=error.message;
+              if(noteRequired()&&!session.draft.note.trim()){
+                $('diag-note-help').hidden=false;
+                $('diag-note-help').textContent='Para continuar, preencha este campo com a evidência encontrada ou explique o motivo da pendência.';
+                $('diag-note').setAttribute('aria-invalid','true');$('diag-note').focus();
+              }
+            }
+          });
+        }
+      }
+      if(focus)$('diag-step-title').focus();
+    }
+    paint();
+  }
+  return {render,create,choose,back,report,readiness,requestText};
+})();
+</script>

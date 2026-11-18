@@ -4,11 +4,29 @@ Central interna de apoio ao atendimento de aplicações web TOTVS Datasul em Goo
 
 ## Escopo
 
+Administradores podem usar **Ver como Atendimento** no cabeçalho para conferir a visão de usuário, com guias publicados e sem ações administrativas. **Voltar à Administração** restaura a visão normal; o perfil real não é alterado. Consulte [Prévia de Atendimento](docs/Previa_Atendimento.md).
+
+Busca com códigos/acentos/plurais e relevância por título; indicador de carregamento nas ações de servidor; página **Sugestões e dificuldades** para melhorias, novos guias e roteiros. Sugestões são persistidas na planilha (autor acompanha as próprias; administração gerencia todas). Consulte [Busca, loading e sugestões](docs/Sugestoes_Busca_Loading.md). Logs e respostas de diagnóstico continuam temporários.
+
 Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de usuários e auditoria; estrutura de dados no Sheets.
 
-A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 28 guias do catálogo, com envio de imagens de exemplo. O Analisador de logs funciona localmente no navegador, sem IA, upload ou histórico. Diagnóstico assistido, assistente Gemini e histórico foram retirados da interface. Consulte [Analisador de logs](docs/Analisador_Logs.md).
+A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 35 guias do catálogo, com envio de imagens de exemplo. O Analisador de logs funciona localmente no navegador, sem IA, upload ou histórico. O Diagnóstico assistido oferece 18 entradas por cenário, resultados informados pelo atendimento e resumo para copiar, sem IA ou persistência de respostas. Assistente Gemini e histórico não estão disponíveis. Consulte [Analisador de logs](docs/Analisador_Logs.md) e [Diagnóstico assistido](docs/Diagnostico_Assistido.md).
 
 ## Guias de atendimento
+
+### Relatórios no RPW
+
+O cenário **Relatório executado no RPW** diferencia solicitação, processamento, saída e resultado funcional. Logs, quando necessários, são solicitados no servidor RPW que executou o relatório; objetos/PROPATH também são conferidos nesse ambiente. O novo **KB-0035** está em docs/Guias_RPW.md. Após o push, importe o guia restante e revise/publique para disponibilizá-lo ao Atendimento. O catálogo passa a 35 guias e o diagnóstico a 18 cenários (roteiros 1.4).
+
+### Separação entre os servidores
+
+Aplicações web/PASOE e telas Progress usam servidores separados. Diagnósticos e 13 guias foram revisados para conferir objetos, PROPATH, pacotes e registros no servidor correspondente. Para guias já importados, use **Revisar N guia(s)** na base após o push; imagens e status são preservados e conteúdo personalizado não é sobrescrito. Veja [Ambientes separados](docs/Ambientes_Separados.md).
+
+### Simulação, Progress e divergências funcionais
+
+Os KB-0029 a KB-0034 estão em [Guias Progress e funcionais](docs/Guias_Progress_Funcionais.md): simulação reproduzível; telas/programas Progress; resultado incorreto sem mensagem; divergência funcional; registro não gerado/SPED; cálculo divergente. Os roteiros separam execução Desktop/web e regra esperada de falha técnica, sem exigir log para toda diferença funcional.
+
+Após `clasp push`, uma base com os 28 guias anteriores oferecerá **Importar 6 guia(s)**. A importação acrescenta somente os ausentes como **Não publicado**, preservando edições, imagens e remoções. Revise e publique os novos guias para que o Atendimento possa abrir os links dos roteiros. Os roteiros ficam disponíveis sem reexecutar a inicialização. Não há novas imagens nesta atualização.
 
 ### Revisão simplificada dos quatro guias novos
 

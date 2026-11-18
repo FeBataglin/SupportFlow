@@ -108,7 +108,7 @@ test('não altera tela após sair, rejeita arquivo inválido e limita grupos com
   assert.equal(result.groups.length,2000);assert.equal(result.omitted,100);assert.equal(result.occurrences,2100);
 });
 test('menu não exibe módulos descontinuados e manifesto não pede requisições externas',()=>{
-  const source=fs.readFileSync('Scripts.html','utf8');assert.doesNotMatch(source,/diagnostics:|gemini:|history:|GEMINI_API_KEY/);
+  const source=fs.readFileSync('Scripts.html','utf8');assert.doesNotMatch(source,/gemini:|history:|GEMINI_API_KEY/);
   assert.equal(JSON.parse(fs.readFileSync('appsscript.json','utf8')).oauthScopes.some(s=>s.endsWith('/script.external_request')),false);
 });
 

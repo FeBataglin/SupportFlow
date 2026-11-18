@@ -99,3 +99,49 @@
 - Leituras de configuração Properties e chamadas normais de 4GLTRACE deixam de gerar erros por palavras no nome da propriedade ou da rotina.
 - Timeout e exceções passam a exigir evidência textual de falha, com regressões cobrindo os exemplos recebidos e falhas explícitas que devem continuar aparecendo.
 - Agrupamento de mensagens iguais entre sessões e threads, preservando cabeçalhos e numeração no contexto.
+
+## Diagnóstico assistido sem IA
+
+- Seis entradas por sintoma, com perguntas e próximos testes condicionados aos resultados informados.
+- Guias de apoio, observações por teste, revisão do caminho e saída para coleta de evidências quando não foi possível verificar.
+- Resumo parcial/final para copiar no chamado, com seleção manual quando a área de transferência não estiver disponível.
+- Estado somente na memória da aba, preservado ao consultar guias, com descarte confirmado para iniciar novo diagnóstico. Sem histórico no servidor ou armazenamento no navegador.
+- Menu e card do diagnóstico disponíveis novamente, sem API ou novos escopos.
+
+## Progress, simulação e resultados funcionais
+
+- 17 entradas de diagnóstico, incluindo telas/programas Progress, simulação reproduzível, resultado sem mensagem, divergência funcional, registro não gerado/SPED e cálculo divergente.
+- Identificação da execução Desktop/web, coleta pertinente à sessão/serviço e solicitação específica para Desktop. Logs não são obrigatórios em todo caminho funcional.
+- Contexto com esperado e observado separados; etapas de pré-requisitos, frequência, reprodução, referência da regra e comparação rastreável.
+- Seis guias novos KB-0029 a KB-0034, importados como não publicados sem sobrescrever conteúdo existente. Regras fiscais e fórmulas específicas precisam de referência validada.
+
+## Servidores separados: web/PASOE e telas Progress
+
+- Roteiros 1.3 com identificação explícita do servidor de cada tipo de execução, incluindo objetos, PROPATH, pacotes e registros independentes.
+- Coleta para telas Progress referencia seu servidor e a sessão/serviço, sem presumir execução somente no cliente.
+- Treze guias revisados para 1.2. Ação Revisar N guia(s) aplica revisões somente a textos originais reconhecidos, preservando imagens, publicação e edições próprias.
+- Resumo identifica o servidor da investigação; sem identificação suficiente, pede confirmação.
+
+## Relatórios RPW
+
+- Título do resumo separado do roteiro/contexto por linhas em branco.
+- Novo guia KB-0035 e 18º cenário, com parâmetros, execução/estado, saída, análise funcional e registros do servidor RPW quando pertinentes.
+- Solicitação curta de log RPW, leitura com evidência e conferência de objetos/PROPATH no RPW; sem presumir nome ou caminho universal de arquivo.
+
+## Busca, carregamento e sugestões
+
+- Busca por código com variações de formato, normalização de termos comuns e ordenação por relevância. Filtros preservados na aba, botão Limpar filtros e proteção contra respostas antigas.
+- Indicador de carregamento nas chamadas de servidor, incluindo modais e operações concorrentes.
+- Tela Sugestões e dificuldades, com envio, acompanhamento do autor e atualização de situação/retorno pela Administração. Aba Suggestions criada automaticamente, com autorização e validação no servidor.
+
+## Prévia de Atendimento
+
+- Alternância no cabeçalho para administradores, com aviso e retorno à visão administrativa.
+- Leituras filtradas no servidor: guias/imagens publicados e sugestões do próprio autor, sem modificar o cadastro ou permissões reais.
+
+## Diagnóstico: ambiente, pacote e análise antes do apoio
+
+- Onze cenários com conferência de Informações do Ambiente, pacote e componentes, PROPATH da instância web, localização/versão de objetos e customizações/UPCs.
+- Etapas distintas para solicitar, receber, conferir escopo, ler o log e correlacionar os achados ao teste.
+- Texto de solicitação ao cliente para cópia manual e atalho para o analisador, preservando o diagnóstico na memória da aba.
+- Observações de evidência exigidas nas verificações principais; pendências e impedimentos explícitos no quadro de preparação e no resumo. Sem certificação automática ou bloqueio de acionamento em urgências.

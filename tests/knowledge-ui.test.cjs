@@ -95,6 +95,19 @@ async function renderList({role='admin',missing=0,drafts=23,published=0,simpleUp
   return content.innerHTML;
 }
 
+test('busca mantém filtros na aba e permite limpar sem sair da base',async()=>{
+  const nodes=new Map(),calls=[];
+  const node=id=>{if(!nodes.has(id))nodes.set(id,{handlers:{},elements:{query:{value:''},category:{value:''}},button:{},querySelector(){return this.button;},addEventListener(name,fn){this.handlers[name]=fn;}});return nodes.get(id);};
+  const document={getElementById:node},window={},content={innerHTML:'',querySelectorAll:()=>[]};
+  const rpc=async(method,query)=>{calls.push({...query});return {articles:[],categories:[],summary:{},guidelines:''};};
+  vm.runInNewContext(fs.readFileSync('KnowledgeScripts.html','utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,''),{window,document});
+  const options={user:{role:'support'},content,isCurrent:()=>true,rpc};
+  await window.SupportFlowKnowledge.render(options);
+  node('guide-search').elements.query.value='RPW';await node('guide-search').handlers.submit({preventDefault(){}});
+  assert.equal(calls.at(-1).query,'RPW');await window.SupportFlowKnowledge.render(options);assert.equal(calls.at(-1).query,'RPW');
+  await node('clear-guide-search').handlers.click();assert.equal(calls.at(-1).query,'');assert.equal(calls.at(-1).category,'');
+});
+
 test('oculta importar após cadastro completo e mostra publicação e envio em lote',async()=>{
   const html=await renderList();
   assert.doesNotMatch(html,/id="import-guides"/);
@@ -112,7 +125,7 @@ test('importação aparece somente quando há códigos faltando e ações admin 
 
 test('oferece simplificação somente quando há versões antigas elegíveis e perfil admin',async()=>{
   const simpleUpdates=[{id:'KB-0025',title:'Guia'}];
-  assert.match(await renderList({simpleUpdates}),/Simplificar 1 guia/);
+  assert.match(await renderList({simpleUpdates}),/Revisar 1 guia/);
   assert.doesNotMatch(await renderList(),/id="simplify-guides"/);
   assert.doesNotMatch(await renderList({role:'support',simpleUpdates}),/id="simplify-guides"/);
 });

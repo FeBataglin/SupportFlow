@@ -92,9 +92,9 @@ function validateGuideImages_(guideId, markdown) {
   });
 }
 
-function getGuideImage(guideId, imageId) {
-  var user = requireUser_();
-  var guide = getGuide(guideId); // Revalida publicação inclusive para imagens.
+function getGuideImage(guideId, imageId, options) {
+  var user = viewUser_(options);
+  var guide = getGuide(guideId, options); // Revalida publicação inclusive para imagens e prévia.
   var images = database_().getSheetByName('GuideImages') ? rows_('GuideImages') : [];
   var image = images.filter(function (item) { return item.id === imageId && item.guideId === guide.id; })[0];
   if (!image || (user.role !== 'admin' && guideImageIds_(guide.markdown).indexOf(imageId) < 0)) {

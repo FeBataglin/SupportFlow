@@ -1,0 +1,20 @@
+<script>
+window.SupportFlowActivity=(()=>{
+  const hosts=new Map();
+  function begin(label='Carregando…'){
+    const dialogs=document.querySelectorAll('dialog[open]');
+    const host=dialogs.length?dialogs[dialogs.length-1]:document.body;
+    let entry=hosts.get(host);
+    if(!entry){
+      const box=document.createElement('div');box.className='action-loading';box.setAttribute('role','status');box.setAttribute('aria-live','polite');
+      const spinner=document.createElement('span');spinner.className='log-spinner';spinner.setAttribute('aria-hidden','true');
+      const text=document.createElement('span');box.append(spinner,text);host.append(box);
+      entry={box,text,count:0};hosts.set(host,entry);
+    }
+    entry.count++;entry.text.textContent=label;
+    let done=false;
+    return ()=>{if(done)return;done=true;if(--entry.count===0){entry.box.remove();hosts.delete(host);}};
+  }
+  return {begin};
+})();
+</script>

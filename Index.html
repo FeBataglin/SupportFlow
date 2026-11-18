@@ -13,8 +13,9 @@
       <header>
         <button class="icon-button mobile-menu" id="menu-toggle" aria-label="Abrir menu" aria-expanded="false">☰</button>
         <div class="breadcrumb">SupportFlow <span>/</span> <strong id="breadcrumb">Visão geral</strong></div>
-        <div class="header-actions"><button id="theme-toggle" class="icon-button" aria-label="Alternar tema">◐</button><span class="separator"></span><span class="avatar" id="avatar">SF</span><div class="identity"><strong id="identity-name">Conectando…</strong><small id="identity-role">Validando acesso</small></div></div>
+        <div class="header-actions"><button type="button" id="user-preview-toggle" class="button secondary" hidden>Ver como Atendimento</button><button id="theme-toggle" class="icon-button" aria-label="Alternar tema">◐</button><span class="separator"></span><span class="avatar" id="avatar">SF</span><div class="identity"><strong id="identity-name">Conectando…</strong><small id="identity-role">Validando acesso</small></div></div>
       </header>
+      <div id="user-preview-banner" class="user-preview-banner" hidden role="status">Prévia de Atendimento: conteúdos publicados e ações de usuário. Você continua usando sua própria conta.</div>
       <main id="content" tabindex="-1"><div class="status-panel" role="status"><span class="loader"></span><h1>Carregando</h1><p>Validando acesso.</p></div></main>
       <footer>SupportFlow <span>v1.0.0</span></footer>
     </div>
@@ -23,6 +24,10 @@
   <?!= include_('KnowledgeUploads'); ?>
   <?!= include_('KnowledgeScripts'); ?>
   <?!= include_('LogScripts'); ?>
+  <?!= include_('DiagnosticFlows'); ?>
+  <?!= include_('DiagnosticScripts'); ?>
+  <?!= include_('Activity'); ?>
+  <?!= include_('SuggestionScripts'); ?>
   <?!= include_('Scripts'); ?>
 </body>
 </html>
