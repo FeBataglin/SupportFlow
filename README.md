@@ -6,7 +6,7 @@ Central interna de apoio ao atendimento de aplicações web TOTVS Datasul em Goo
 
 Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de usuários e auditoria; estrutura de dados no Sheets.
 
-A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 28 guias do catálogo, com envio de imagens de exemplo. Analisador de logs, Gemini, diagnóstico assistido, histórico e indicadores futuros continuam como páginas explicativas. Não há upload de logs, chat ou relatórios nesta entrega.
+A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 28 guias do catálogo, com envio de imagens de exemplo. O Analisador de logs funciona localmente no navegador, sem IA, upload ou histórico. Diagnóstico assistido, assistente Gemini e histórico foram retirados da interface. Consulte [Analisador de logs](docs/Analisador_Logs.md).
 
 ## Guias de atendimento
 
@@ -143,7 +143,7 @@ Alterações de usuários usam lock do script e preservam ao menos um admin ativ
 
 Helpers terminam em `_` e não são expostos via `google.script.run`. A entrada `setupSupportFlow` é pública e exige identidade correspondente a `INITIAL_ADMIN_EMAIL` e domínio permitido, inclusive em chamadas diretas. Remova essa propriedade após configurar. Demais endpoints públicos revalidam permissões em cada chamada; esconder o menu não é a medida de autorização.
 
-Não há conexão Gemini nem escopo externo. Serviço aprovado, modelo, sanitização e política de privacidade serão definidos para v1.3. Não armazene logs brutos nem segredos nas tabelas reservadas.
+Não há integração Gemini nem escopo de requisição externa. O analisador usa regras locais e não grava conteúdo ou metadados das análises. Não armazene logs brutos nem segredos nas tabelas reservadas. Propriedades GEMINI_API_KEY e GEMINI_MODEL configuradas anteriormente não são usadas e podem ser removidas.
 
 ## Verificação
 

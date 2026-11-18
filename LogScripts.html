@@ -1,0 +1,161 @@
+<script>
+window.SupportFlowLogs = (() => {
+  'use strict';
+  const MAX = 2*1024*1024;
+  const MAX_FILE = 100*1024*1024;
+  const rules = [
+    {id:'timeout',title:'Possível tempo limite excedido',re:/\btimed out\b|tempo limite (?:excedido|atingido)|\b(?:request|connection|socket|read|write|operation|query) time[ -]?out\b|\btimeout (?:expired|exceeded|occurred)\b|\bSocketTimeoutException\s*(?::|$)|^timeout\s*(?::|$)/i,next:'Compare o horário com a requisição no Network e verifique em qual camada o tempo se esgotou.',guide:'KB-0025'},
+    {id:'auth',title:'Possível falha de autenticação ou acesso',re:/unauthorized|forbidden|access denied|permission denied|não autorizado|acesso negado|(?:HTTP(?:\/\d(?:\.\d)?)?\s*|status[=: ]+)(?:401|403)\b/i,next:'Confira usuário, permissões e autenticação no ambiente utilizado.',guide:'KB-0010'},
+    {id:'missing',title:'Recurso ou arquivo não encontrado',re:/not found|não encontrado|(?:HTTP(?:\/\d(?:\.\d)?)?\s*|status[=: ]+)404\b/i,next:'Confira URL, caminho e disponibilidade do recurso. A mensagem pode estar relacionada a uma configuração ou arquivo ausente.',guide:'KB-0011'},
+    {id:'connection',title:'Possível falha de conexão',re:/connection refused|connection reset|unreachable|unknown host|unable to connect|cannot connect|conexão recusada/i,next:'Identifique o destino da conexão e confira a disponibilidade com o responsável pelo ambiente.',guide:'KB-0028'},
+    {id:'error',title:'Erro ou exceção registrado',re:/(?:^|\s|\[)(?:ERROR|FATAL|SEVERE)(?=\s|:|\]|$)|(?:^|[\s:])(?:[\w$]+\.)*[\w$]*(?:Exception|Error)\s*(?::|$)|\b(?:failed to|failure to|falha ao|erro ao)\b|^\s*(?:\*\*|erro\s*:|exceção\s*:)/i,next:'Leia as linhas próximas e compare com o teste. A ocorrência de uma exceção não comprova a causa raiz.',guide:'KB-0013'},
+    {id:'http',title:'Resposta HTTP de erro',re:/\bHTTP(?:\/\d(?:\.\d)?)?\s+[45]\d\d\b|\bstatus[=: ]+[45]\d\d\b/i,next:'Confira o conteúdo da resposta no Network e correlacione o horário com os logs do servidor.',guide:'KB-0008'},
+    {id:'warning',title:'Aviso registrado',re:/\bWARN(?:ING)?\b|\baviso\b/i,next:'Verifique se o aviso coincide com o teste e se há erros próximos. Um aviso pode ocorrer sem impedir o uso.',guide:'KB-0027',level:'warning'}
+  ];
+  const esc = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function logMessage(line) {
+    // Reconhece o cabeçalho observado nos exemplos PASOE sem interpretar IDs e nível como mensagem.
+    const record=line.match(/^\s*\d{4}-\d{2}-\d{2}T\S+\s+\d+\s+\d+\s+\d+\s+\S+\s+\S+\s+(\S+)\s+(.*)$/);
+    return record ? {category:record[1],text:record[2]} : {category:'',text:line.replace(/^\s*\[?\d{4}-\d{2}-\d{2}[T ][\d:.+-]+Z?\]?\s*/,'')};
+  }
+  function classify(message) {
+    const text=message.text.trim();
+    // Leitura de configuração e execução rastreada não são eventos de falha.
+    if(/^Properties$/i.test(message.category) && /^\d+\s*-\s*Lendo\s*:\s*[^=]+=/i.test(text))return null;
+    if(/^4GLTRACE$/i.test(message.category) && /^(?:Run\b|Return from\b|Invoke\b)/i.test(text))return null;
+    // Evita tratar nomes como totvs.timeout.exception, has-errors e caminhos como mensagens.
+    const evidence=text.replace(/\b[\w-]+(?:[./][\w-]+)+\b/g,'[identificador]');
+    // Classes de exceção são evidência apenas como mensagem/stack de exceção, não como propriedade.
+    const exception=/(?:^|[\s:])(?:[\w$]+\.)*[A-Za-z_$][\w$]*(?:Exception|Error)\s*(?::|$)/.test(text);
+    return rules.find(rule=>rule.re.test(rule.id==='error' && exception ? text : evidence))||null;
+  }
+  function analyzer(program='') {
+    const groups=new Map(),previous=[],pending=[]; let occurrences=0,programMatches=0,omitted=0,lineCount=0,replacementCharacters=0;
+    const needle=program.trim().toLowerCase();
+    function push(line){
+      lineCount++;
+      replacementCharacters+=(line.match(/\uFFFD/g)||[]).length;
+      const current={line:lineCount,text:line.slice(0,2000)};
+      for(let i=pending.length-1;i>=0;i--){pending[i].context.push(current);if(--pending[i].remaining===0)pending.splice(i,1);}
+      const matchesProgram=!!needle && line.toLowerCase().includes(needle);
+      if(matchesProgram)programMatches++;
+      const message=logMessage(line),rule=classify(message);
+      if(rule){
+      occurrences++;
+      // Agrupa a mensagem; o cabeçalho variável de sessão/thread permanece no contexto original.
+      const signature=message.category+'|'+message.text.trim();
+      const key=rule.id+'|'+signature;
+      let group=groups.get(key);
+      if(!group && groups.size>=2000){omitted++;}
+      else {
+      if(!group){group={id:rule.id,title:rule.title,next:rule.next,guide:rule.guide,level:rule.level||'error',message:line.slice(0,1500),count:0,samples:[],programMatch:false};groups.set(key,group);}
+      group.count++;group.programMatch ||= matchesProgram;
+      if(group.samples.length<3){const sample={line:lineCount,context:[...previous,current]};group.samples.push(sample);pending.push({context:sample.context,remaining:4});}
+      }
+      }
+      previous.push(current);if(previous.length>3)previous.shift();
+    }
+    return {push,finish:()=>({lineCount,occurrences,programMatches,omitted,replacementCharacters,groups:[...groups.values()]})};
+  }
+  function analyze(text,program='') {
+    if(typeof text!=='string' || text.length>MAX) throw new Error('Use até 2 MB de texto colado; para logs maiores, selecione o arquivo.');
+    const engine=analyzer(program);text.split(/\r?\n/).forEach(engine.push);return engine.finish();
+  }
+  async function analyzeFile(file,program='',{isCurrent=()=>true,onProgress=()=>{}}={}) {
+    if(file.size>MAX_FILE)throw new Error('Selecione um arquivo de até 100 MB.');
+    // Mantém sequências multibyte entre blocos. Bytes isolados inválidos viram
+    // U+FFFD, com aviso no resultado, sem impedir a leitura do restante do log.
+    if(typeof TextDecoder==='undefined')throw new Error('Este navegador não oferece o decodificador necessário para arquivos grandes. Atualize o navegador.');
+    const engine=analyzer(program),decoder=new TextDecoder('utf-8',{fatal:false});
+    let carry='';
+    const consume=text=>{
+      if(text.includes('\u0000'))throw new Error('Arquivo inválido. Use TXT ou LOG em UTF-8.');
+      const lines=(carry+text).split('\n');carry=lines.pop();
+      if(carry.length>1024*1024)throw new Error('O arquivo contém uma linha maior que 1 MB. Divida essa linha antes de analisar.');
+      for(const line of lines){if(line.length>1024*1024)throw new Error('O arquivo contém uma linha maior que 1 MB. Divida essa linha antes de analisar.');engine.push(line.endsWith('\r')?line.slice(0,-1):line);}
+    };
+    const chunk=256*1024;
+    for(let offset=0;offset<file.size;offset+=chunk){
+      if(!isCurrent())return null;
+      let bytes;
+      try{bytes=await file.slice(offset,Math.min(file.size,offset+chunk)).arrayBuffer();}
+      catch(_){throw new Error('Não foi possível ler um bloco do arquivo. Selecione o arquivo novamente e tente outra vez.');}
+      if(!isCurrent())return null;
+      consume(decoder.decode(bytes,{stream:true}));
+      onProgress(Math.round(Math.min(file.size,offset+chunk)/file.size*100));
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    if(!isCurrent())return null;
+    consume(decoder.decode());engine.push(carry.endsWith('\r')?carry.slice(0,-1):carry);
+    return engine.finish();
+  }
+  function render({content,isCurrent}) {
+    content.innerHTML=`<div class="page-heading"><div><h1>Analisador de logs</h1><p>Identifique possíveis erros e confira o contexto de cada ocorrência.</p></div></div>
+      <details class="log-criteria"><summary><span class="log-info-icon" aria-hidden="true">i</span> Critérios da análise</summary><div class="log-criteria-body">
+      <p>A análise usa regras de texto, sem IA. Cada linha é verificada para identificar indícios:</p>
+      <ul><li><strong>Erros e exceções:</strong> ERROR, FATAL, SEVERE, exceções apresentadas como mensagem, “failed to”, “erro ao” e mensagens começando com **.</li>
+      <li><strong>Timeout:</strong> mensagens como “timed out”, “request timeout” e “tempo limite excedido”.</li>
+      <li><strong>Acesso:</strong> “unauthorized”, “access denied” e HTTP 401/403.</li>
+      <li><strong>Recurso ausente:</strong> “not found”, “não encontrado” e HTTP 404.</li>
+      <li><strong>Conexão:</strong> “connection refused”, “connection reset” e “unable to connect”.</li>
+      <li><strong>HTTP:</strong> respostas 4xx/5xx identificadas como HTTP ou status.</li>
+      <li><strong>Avisos:</strong> WARN, WARNING e “aviso”; ocultos por padrão, disponíveis em “Incluir avisos”.</li></ul>
+      <p>Leituras de configuração em Properties e chamadas normais Run, Return from e Invoke em 4GLTRACE são desconsideradas como ocorrências. Nomes como totvs.timeout.exception não bastam para indicar falha.</p>
+      <p>Mensagens iguais são agrupadas pela categoria e conteúdo, sem o cabeçalho variável de data, sessão e thread. Exibimos até três exemplos por mensagem, com três linhas anteriores e quatro posteriores. O programa informado apenas destaca menções; não restringe a análise à execução dele.</p>
+      <p><strong>Limitações:</strong> o analisador não interpreta o fluxo completo, não verifica recuperação após um erro e não confirma impacto ou causa raiz. Códigos Progress não são interpretados individualmente. Pode haver falsos positivos e falhas não reconhecidas.</p>
+      <p>Até 2.000 mensagens distintas recebem detalhamento, com aviso se houver ocorrências adicionais. Mensagens e linhas muito longas são abreviadas na tela. O conteúdo é processado apenas no navegador, sem envio ao servidor e sem histórico.</p>
+      </div></details>
+      <section class="panel guide-editor"><p>O conteúdo fica nesta tela, sem envio ao servidor e sem histórico. Ao sair ou recarregar, a análise é descartada.</p>
+      <label>Programa ou endpoint (opcional)<input id="log-program" maxlength="200" placeholder="Destaca ocorrências que mencionam este texto"></label>
+      <label>Arquivo TXT ou LOG (até 100 MB)<input type="file" id="log-file" accept=".txt,.log,text/plain"></label>
+      <label>Ou cole o conteúdo<textarea id="log-text" maxlength="2097152" spellcheck="false"></textarea></label>
+      <div class="guide-actions"><button type="button" class="button" id="log-analyze">Analisar log</button><button type="button" class="button secondary" id="log-clear">Limpar</button></div>
+      <div id="log-loading" class="log-loading" hidden><span class="log-spinner" aria-hidden="true"></span><span>Processando log…</span><progress id="log-progress" max="100" value="0" aria-label="Progresso da análise" hidden></progress></div>
+      <p id="log-status" role="status" aria-live="polite"></p></section>
+      <section id="log-results" hidden><div class="section-heading"><h2>Ocorrências</h2></div><p id="log-summary"></p>
+      <div class="log-filters"><label class="log-search-label">Pesquisar mensagem<input id="log-search" placeholder="Texto da mensagem"></label><label class="log-warning-switch"><input id="log-warnings" type="checkbox" role="switch"><span class="log-switch-track" aria-hidden="true"></span><span>Incluir avisos</span></label></div>
+      <p>As regras reconhecem padrões de texto. Não confirmam a causa raiz nem garantem identificar todos os problemas. Exibimos até três contextos por mensagem; linhas muito longas são abreviadas.</p><div id="log-groups"></div><button type="button" class="button secondary" id="log-more" hidden>Mostrar mais mensagens</button></section>`;
+    const $=id=>content.querySelector('#'+id);
+    let result=null,fileRevision=0,visible=100,selectedFile=null;
+    const busy=value=>{['log-analyze','log-program','log-file'].forEach(id=>{$(id).disabled=value;});$('log-text').disabled=value||!!selectedFile;$('log-loading').hidden=!value;$('log-progress').hidden=true;$('log-progress').value=0;};
+    const reset=()=>{result=null;visible=100;$('log-results').hidden=true;$('log-groups').innerHTML='';$('log-summary').textContent='';$('log-status').textContent='';};
+    function showGroups(){
+      if(!result)return;
+      const search=$('log-search').value.toLowerCase(),includeWarnings=$('log-warnings').checked;
+      const filtered=result.groups.filter(g=>(includeWarnings||g.level!=='warning')&&g.message.toLowerCase().includes(search));
+      const displayed=filtered.slice(0,visible);
+      $('log-more').hidden=visible>=filtered.length;
+      $('log-summary').textContent=`${result.lineCount} linhas · ${result.occurrences} ocorrências · ${result.groups.length} mensagens distintas analisadas. ${$('log-program').value.trim()?result.programMatches+' linhas mencionam o programa informado. ':''}Exibindo ${displayed.length} de ${filtered.length} mensagens filtradas.${result.omitted?' Limite de 2.000 mensagens distintas atingido: '+result.omitted+' ocorrências adicionais sem detalhamento. Analise um trecho menor.':''}`;
+      $('log-groups').innerHTML=displayed.length ? displayed.map(g=>`<article class="panel log-occurrence"><div class="guide-meta"><span>${g.level==='error'?'Erro':'Aviso'}</span><span>${g.count} ocorrência(s)</span>${g.programMatch?'<span>Menciona o programa</span>':''}</div><h3>${esc(g.title)}</h3><pre>${esc(g.message)}</pre><p>${esc(g.next)}</p><a href="#knowledge/${g.guide}" target="_self">Consultar guia ${g.guide}</a>${g.samples.map((sample,index)=>`<details ${index===0?'open':''}><summary>Contexto na linha ${sample.line}</summary><pre>${sample.context.map(l=>esc('L'+l.line+': '+l.text)).join('\n')}</pre></details>`).join('')}</article>`).join('') : '<div class="panel">Nenhuma mensagem encontrada com esses filtros.</div>';
+    }
+    const filter=()=>{visible=100;showGroups();};
+    $('log-search').addEventListener('input',filter);$('log-warnings').addEventListener('change',filter);
+    $('log-more').addEventListener('click',()=>{visible+=100;showGroups();});
+    $('log-text').addEventListener('input',()=>{fileRevision++;selectedFile=null;reset();});$('log-program').addEventListener('input',reset);
+    $('log-clear').addEventListener('click',()=>{fileRevision++;selectedFile=null;busy(false);$('log-text').placeholder='';$('log-text').value='';$('log-program').value='';$('log-file').value='';$('log-search').value='';$('log-warnings').checked=false;reset();});
+    $('log-file').addEventListener('change',async()=>{
+      const ticket=++fileRevision,file=$('log-file').files[0];selectedFile=null;reset();$('log-text').value='';$('log-text').placeholder='';busy(false);if(!file)return;
+      if(!/\.(txt|log)$/i.test(file.name)||file.size>MAX_FILE){$('log-status').textContent='Selecione um TXT ou LOG de até 100 MB.';return;}
+      if(file.size>MAX){selectedFile=file;busy(false);$('log-text').placeholder='Arquivo grande selecionado. A análise lerá todo o arquivo em blocos, sem preencher esta caixa.';$('log-status').textContent=`Arquivo de ${(file.size/1024/1024).toFixed(1)} MB selecionado. Clique em Analisar log. O progresso aparecerá aqui.`;return;}
+      busy(true);$('log-status').textContent='Lendo arquivo…';
+      try{const text=await file.text();if(!isCurrent()||ticket!==fileRevision)return;if(text.includes('\u0000'))throw Error('Arquivo inválido');$('log-text').value=text;$('log-status').textContent='Arquivo carregado. Clique em Analisar log.';}
+      catch(_){if(isCurrent()&&ticket===fileRevision)$('log-status').textContent='Não foi possível ler o arquivo como texto. Selecione novamente um TXT ou LOG.';}
+      finally{if(isCurrent()&&ticket===fileRevision)busy(false);}
+    });
+    $('log-analyze').addEventListener('click',async()=>{
+      const ticket=++fileRevision;reset();if(!selectedFile&&!$('log-text').value.trim()){$('log-status').textContent='Selecione um arquivo ou cole o conteúdo do log.';return;}
+      busy(true);$('log-status').textContent='Analisando… 0%';
+      try{
+        const output=selectedFile ? await analyzeFile(selectedFile,$('log-program').value,{isCurrent:()=>isCurrent()&&ticket===fileRevision,onProgress:percent=>{$('log-progress').hidden=false;$('log-progress').value=percent;$('log-status').textContent=`Analisando… ${percent}% — Limpar cancela a leitura.`;}}) : analyze($('log-text').value,$('log-program').value);
+        if(!isCurrent()||ticket!==fileRevision||!output)return;
+        result=output;$('log-results').hidden=false;$('log-status').textContent=result.occurrences?'Análise concluída. Confira as mensagens abaixo.':'Nenhum padrão de erro ou aviso reconhecido. Isso não garante que o log esteja sem problemas.';
+        if(result.replacementCharacters)$('log-status').textContent+=` Atenção: o texto contém ${result.replacementCharacters} caractere(s) de substituição (�). Alguns caracteres podem não ter sido lidos corretamente; confira o arquivo original. A análise não altera o arquivo.`;
+        showGroups();
+      }
+      catch(error){if(isCurrent()&&ticket===fileRevision)$('log-status').textContent='Não foi possível concluir a análise. '+(error.message||'Tente selecionar o arquivo novamente.');}
+      finally{if(isCurrent()&&ticket===fileRevision)busy(false);}
+    });
+  }
+  return {render,analyze,analyzeFile};
+})();
+</script>

@@ -71,3 +71,31 @@
 - Operações administrativas restritas a admin; preservação do último administrador ativo.
 - Helpers e inicialização privados para chamadas do frontend; escape HTML e proteção contra fórmulas na escrita.
 - Sem conexão externa com IA, armazenamento de logs ou segredos no código.
+
+## Analisador local sem IA
+
+- Substituída a integração Gemini por classificação local de TXT/LOG, agrupamento, contexto e filtros.
+- Programa opcional destaca menções sem excluir outros indícios. Nenhum log ou resultado é enviado ou persistido.
+- Retirados diagnóstico assistido, assistente Gemini e histórico da navegação e dos cards.
+- Removidos endpoints Gemini e escopo de requisição externa.
+- 67 testes locais aprovados, incluindo classificação, contexto, filtros, escape de HTML e descarte de leitura pendente.
+
+## Logs grandes e botão de paginação
+
+- Arquivos TXT/LOG de até 100 MB, com leitura incremental, progresso e cancelamento. Texto colado mantém limite de 2 MB.
+- Arquivos grandes são analisados sem inserir o conteúdo inteiro na caixa de texto.
+- Espaçamento do botão Mostrar mais mensagens e regra CSS para respeitar seu estado oculto, inclusive com filtros sem resultados.
+- Testes com arquivo sintético de 31 MB, erro no fim, contexto entre blocos, UTF-8, cancelamento e limites.
+
+## Leitura UTF-8 e mensagens de erro
+
+- Removida a atribuição genérica de TypeError à codificação UTF-8.
+- Leitura tolerante a bytes inválidos, com aviso de caracteres de substituição sem interromper o restante da análise.
+- Falhas ao ler blocos são identificadas separadamente. Arquivos originais não são alterados.
+
+## Redução de falsos positivos nos logs PASOE
+
+- Separação do cabeçalho e da mensagem no formato PASOE observado nos exemplos.
+- Leituras de configuração Properties e chamadas normais de 4GLTRACE deixam de gerar erros por palavras no nome da propriedade ou da rotina.
+- Timeout e exceções passam a exigir evidência textual de falha, com regressões cobrindo os exemplos recebidos e falhas explícitas que devem continuar aparecendo.
+- Agrupamento de mensagens iguais entre sessões e threads, preservando cabeçalhos e numeração no contexto.
