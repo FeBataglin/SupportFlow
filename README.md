@@ -4,6 +4,8 @@ Central interna de apoio ao atendimento de aplicações web TOTVS Datasul em Goo
 
 ## Escopo
 
+Guias consultados a partir de um diagnóstico oferecem **Voltar ao diagnóstico**. Na base, **Revisar resultados (N)** permite percorrer a lista filtrada com Anterior/Próximo e publicar o guia atual antes de avançar, sempre com confirmação. Veja [Navegação e revisão de guias](docs/Navegacao_Guias.md).
+
 Administradores podem usar **Ver como Atendimento** no cabeçalho para conferir a visão de usuário, com guias publicados e sem ações administrativas. **Voltar à Administração** restaura a visão normal; o perfil real não é alterado. Consulte [Prévia de Atendimento](docs/Previa_Atendimento.md).
 
 Busca com códigos/acentos/plurais e relevância por título; indicador de carregamento nas ações de servidor; página **Sugestões e dificuldades** para melhorias, novos guias e roteiros. Sugestões são persistidas na planilha (autor acompanha as próprias; administração gerencia todas). Consulte [Busca, loading e sugestões](docs/Sugestoes_Busca_Loading.md). Logs e respostas de diagnóstico continuam temporários.

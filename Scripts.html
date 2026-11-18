@@ -9,7 +9,7 @@
     suggestions: {title:'Sugestões e dificuldades',icon:'✎',description:'Ideias de melhoria e assuntos que precisam de orientação.'},
     admin: {title:'Administração',icon:'⚙'}
   };
-  let state = null, sequence = 0, preview = false;
+  let state = null, sequence = 0, preview = false, previousPage='',guideReturn='';
   const $ = id => document.getElementById(id);
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const date = value => { const d = new Date(value); return isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}); };
@@ -84,12 +84,15 @@
     if (id === 'dashboard') dashboard();
     else if (id === 'admin') admin(ticket);
     else if (id === 'knowledge') {
+      if(previousPage==='diagnostics')guideReturn='diagnostics';
+      else if(previousPage!=='knowledge')guideReturn='';
       let code;
       try {code = route[1] ? decodeURIComponent(route[1]) : '';} catch (_) {code = '__invalid__';}
-      window.SupportFlowKnowledge.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence,onChange:load,id:code});
+      window.SupportFlowKnowledge.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence,onChange:load,id:code,returnTo:guideReturn});
     } else if (id === 'logs') window.SupportFlowLogs.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence});
     else if (id === 'diagnostics') window.SupportFlowDiagnostics.render({content:$('content'),isCurrent:() => ticket === sequence});
     else if (id === 'suggestions') window.SupportFlowSuggestions.render({rpc,user:state.user,content:$('content'),isCurrent:() => ticket === sequence});
+    previousPage=id;
 
   }
   async function load() {

@@ -139,6 +139,12 @@
 - Alternância no cabeçalho para administradores, com aviso e retorno à visão administrativa.
 - Leituras filtradas no servidor: guias/imagens publicados e sugestões do próprio autor, sem modificar o cadastro ou permissões reais.
 
+## Navegação dos guias
+
+- Retorno direto ao diagnóstico no início/fim do leitor e em mensagens de indisponibilidade, preservando o roteiro na memória da aba.
+- Revisão sequencial dos resultados filtrados com Anterior/Próximo, posição e encerramento.
+- Publicar e ir ao próximo exige confirmação somente para o guia atual; cancelar/falhar não avança nem publica outros guias.
+
 ## Diagnóstico: ambiente, pacote e análise antes do apoio
 
 - Onze cenários com conferência de Informações do Ambiente, pacote e componentes, PROPATH da instância web, localização/versão de objetos e customizações/UPCs.

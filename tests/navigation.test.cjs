@@ -6,7 +6,7 @@ const path = require('node:path');
 
 test('links do menu, cards e guias navegam internamente sem abrir outra página',async () => {
   const elements = new Map();
-  const windowEvents = {}, documentEvents = {}, visits = [];
+  const windowEvents = {}, documentEvents = {}, visits = [],origins=[];
   function element(id) {
     if (!elements.has(id)) elements.set(id,{
       innerHTML:'',textContent:'',dataset:{},
@@ -27,7 +27,7 @@ test('links do menu, cards e guias navegam internamente sem abrir outra página'
   };
   const context = vm.createContext({
     document,location,google:{script:{run}},localStorage:{getItem:()=> 'light'},
-    window:{google:{script:{run}},SupportFlowKnowledge:{render:options=>visits.push(options.id)},SupportFlowDiagnostics:{render:()=>visits.push('diagnostics')},SupportFlowSuggestions:{render:()=>visits.push('suggestions')},
+    window:{google:{script:{run}},SupportFlowKnowledge:{render:options=>{visits.push(options.id);origins.push(options.returnTo);}},SupportFlowDiagnostics:{render:()=>visits.push('diagnostics')},SupportFlowSuggestions:{render:()=>visits.push('suggestions')},
       addEventListener:(name,handler)=>{windowEvents[name]=handler;}},setTimeout
   });
   const source = fs.readFileSync(path.join(__dirname,'../Scripts.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,'');
@@ -51,5 +51,8 @@ test('links do menu, cards e guias navegam internamente sem abrir outra página'
   click('#knowledge',true);assert.equal(location.hash,'#dashboard');
   location.hash='#knowledge/KB-0002';windowEvents.hashchange();assert.equal(visits.at(-1),'KB-0002');
   click('#diagnostics');windowEvents.hashchange();assert.equal(visits.at(-1),'diagnostics');
+  click('#knowledge/KB-0013');windowEvents.hashchange();assert.equal(origins.at(-1),'diagnostics');
+  click('#knowledge/KB-0014');windowEvents.hashchange();assert.equal(origins.at(-1),'diagnostics');
+  click('#dashboard');windowEvents.hashchange();click('#knowledge');windowEvents.hashchange();assert.equal(origins.at(-1),'');
   click('#suggestions');windowEvents.hashchange();assert.equal(visits.at(-1),'suggestions');
 });

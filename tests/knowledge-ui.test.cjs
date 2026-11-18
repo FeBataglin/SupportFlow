@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
-async function renderReader(role='admin',failure=false) {
+async function renderReader(role='admin',failure=false,returnTo='') {
   const nodes=new Map(),dialogs=[],calls=[];
   const location={hash:'#knowledge/KB-0001'};
   let refreshes=0;
@@ -37,7 +37,7 @@ async function renderReader(role='admin',failure=false) {
   const context=vm.createContext({window:{},document,location});
   const source=fs.readFileSync(path.join(__dirname,'../KnowledgeScripts.html'),'utf8').replace(/^<script>\s*/,'').replace(/<\/script>\s*$/,'');
   vm.runInContext(source,context);
-  await context.window.SupportFlowKnowledge.render({rpc,user:{role},content,isCurrent:()=>true,onChange:async()=>{refreshes++;},id:article.id});
+  await context.window.SupportFlowKnowledge.render({rpc,user:{role},content,isCurrent:()=>true,onChange:async()=>{refreshes++;},id:article.id,returnTo});
   return {nodes,dialogs,calls,content,location,get refreshes(){return refreshes;}};
 }
 
@@ -57,6 +57,13 @@ test('cancelar remoção não chama servidor; confirmar envia guia e versão e v
   assert.equal(request.id,'KB-0001');assert.equal(request.confirmId,'KB-0001');
   assert.equal(request.updatedAt,'2026-11-17T10:00:00Z');
   assert.equal(ui.location.hash,'#knowledge');assert.equal(ui.refreshes,1);assert.equal(dialog.removed,true);
+});
+
+test('guia consultado pelo diagnóstico oferece retorno direto no topo e no fim',async()=>{
+  const ui=await renderReader('support',false,'diagnostics');
+  assert.equal((ui.content.innerHTML.match(/Voltar ao diagnóstico/g)||[]).length,2);
+  assert.match(ui.content.innerHTML,/href="#diagnostics"/);
+  assert.doesNotMatch((await renderReader('support')).content.innerHTML,/Voltar ao diagnóstico/);
 });
 
 test('falha ao remover mantém confirmação aberta e Atendimento não recebe ação de remoção',async()=>{

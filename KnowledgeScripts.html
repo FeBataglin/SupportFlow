@@ -4,6 +4,7 @@ window.SupportFlowKnowledge = (() => {
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const href = id => '#knowledge/' + encodeURIComponent(id);
   let lastQuery={query:'',category:'',status:'',scope:'subject'};
+  let reviewQueue=[];
   function inline(text) {
     const tokens = /\[[^\]\n]+\]\(https?:\/\/[^\s)]+\)|KB-\d{4}(?:\/\d{4})*|\*\*[^*\n]+\*\*/g;
     let result = '', start = 0;
@@ -50,12 +51,13 @@ window.SupportFlowKnowledge = (() => {
     close();return html;
   }
   async function render(options) {
-    const {rpc,user,content,isCurrent,onChange,id} = options;
+    const {rpc,user,content,isCurrent,onChange,id,returnTo} = options;
     const admin = user.role === 'admin';
     const query = {...lastQuery};if(!admin)query.status='';
     let listTicket=0;
     const title = '<div class="page-heading"><h1>Base de conhecimento</h1></div>';
-    const fail = error => { if(isCurrent()) content.innerHTML = title + `<section class="panel"><p role="alert">${esc(error.message || error)}</p><a class="button secondary" target="_self" href="#knowledge">Voltar aos guias</a></section>`; };
+    const returnLink=returnTo==='diagnostics'?'<a href="#diagnostics" target="_self" class="button secondary">← Voltar ao diagnóstico</a>':'';
+    const fail = error => { if(isCurrent()) content.innerHTML = title + `<section class="panel"><p role="alert">${esc(error.message || error)}</p>${returnLink}<a class="button secondary" target="_self" href="#knowledge">Voltar aos guias</a></section>`; };
     const imageRequests = new Map();
     const uploads = window.SupportFlowUploads;
     let restoreDialog=null;
@@ -104,7 +106,7 @@ window.SupportFlowKnowledge = (() => {
       });
       content.append(dialog);dialog.showModal();cancel.focus();
     }
-    function confirmPublish(articles) {
+    function confirmPublish(articles,after) {
       const dialog=document.createElement('dialog');dialog.className='guide-batch-dialog';
       dialog.setAttribute('aria-label','Confirmar publicação');
       dialog.innerHTML=`<h2>Publicar ${articles.length} guia(s)?</h2><p>Os guias abaixo ficarão disponíveis ao Atendimento. Confirme após revisar o conteúdo.</p><ul>${articles.map(a=>'<li>'+esc(a.id)+' — '+esc(a.title)+'</li>').join('')}</ul><div class="guide-actions"><button type="button" class="button secondary" data-cancel>Cancelar</button><button type="button" class="button" data-confirm>Publicar guias</button></div><p role="status" data-status></p>`;
@@ -117,7 +119,7 @@ window.SupportFlowKnowledge = (() => {
         pending=true;confirm.disabled=true;cancel.disabled=true;status.textContent='Publicando…';
         try {
           await rpc('publishGuides',{confirm:true,guides:articles.map(a=>({id:a.id,updatedAt:a.updatedAt}))});
-          dialog.close();if(isCurrent()) await onChange();
+          dialog.close();if(isCurrent()){if(after)await after();else await onChange();}
         } catch(error) {if(isCurrent()) status.textContent=error.message || String(error);}
         finally {pending=false;confirm.disabled=false;cancel.disabled=false;}
       });
@@ -253,13 +255,19 @@ window.SupportFlowKnowledge = (() => {
       });
     }
     function read(article) {
-      content.innerHTML = `<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<div class="guide-actions-right">'+(article.status === 'draft' ? '<button id="publish-guide" class="button">Publicar guia</button>' : '')+'<button id="edit-guide" class="button secondary">Editar guia</button><button id="remove-guide" class="button danger">Remover guia</button></div>' : ''}</div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Não publicado'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Este guia ainda não está disponível ao Atendimento.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}</article>`;
+      const index=admin&&returnTo!=='diagnostics'?reviewQueue.findIndex(item=>item.id===article.id):-1;
+      const previous=index>0?reviewQueue[index-1]:null,next=index>=0?reviewQueue[index+1]:null;
+      const reviewBar=index>=0?`<div class="guide-review-nav"><span>Revisão · ${index+1} de ${reviewQueue.length}</span>${previous?`<a class="button secondary" href="${href(previous.id)}" target="_self" title="${esc(previous.title)}">← Anterior</a>`:''}${next?`<a class="button secondary" href="${href(next.id)}" target="_self" title="${esc(next.title)}">Próximo →</a>`:'<span>Último guia desta seleção</span>'}<button type="button" class="text-button" id="exit-guide-review">Encerrar revisão</button></div>`:'';
+      content.innerHTML = `<div class="guide-reader-toolbar">${returnLink}${reviewBar}<div class="guide-actions"><a href="#knowledge" target="_self" class="text-button">← Todos os guias</a>${admin ? '<div class="guide-actions-right">'+(article.status === 'draft' ? '<button id="publish-guide" class="button">Publicar guia</button>'+(next?'<button id="publish-next-guide" class="button secondary">Publicar e ir ao próximo</button>':'') : '')+'<button id="edit-guide" class="button secondary">Editar guia</button><button id="remove-guide" class="button danger">Remover guia</button></div>' : ''}</div></div><article class="panel guide-article"><div class="guide-meta"><span>${esc(article.id)}</span><span>${esc(article.category)}</span><span>${article.status === 'published' ? 'Publicado' : 'Não publicado'}</span>${article.revision ? '<span>Revisão '+esc(article.revision)+'</span>' : ''}</div><h1>${esc(article.title)}</h1>${article.status !== 'published' ? '<div class="notice">Este guia ainda não está disponível ao Atendimento.</div>' : ''}<div class="guide-body">${markdown(article.markdown)}</div>${article.keywords ? '<p class="guide-keywords">Palavras-chave: '+esc(article.keywords)+'</p>' : ''}${returnLink?'<div class="guide-return-bottom">'+returnLink+'</div>':''}</article>`;
+      if(index>=0)document.getElementById('exit-guide-review').addEventListener('click',()=>{reviewQueue=[];location.hash='#knowledge';});
       if(admin) {
         if(article.status === 'draft') document.getElementById('publish-guide').addEventListener('click',()=>confirmPublish([article]));
+        if(article.status==='draft'&&next)document.getElementById('publish-next-guide').addEventListener('click',()=>confirmPublish([article],async()=>{location.hash=href(next.id);await onChange();}));
         document.getElementById('edit-guide').addEventListener('click',() => editor(article));
         document.getElementById('remove-guide').addEventListener('click',() => confirmRemove(article));
       }
       hydrateImages(content.querySelector('.guide-body'),article);
+      if(window.scrollTo)window.scrollTo({top:0,behavior:'auto'});
     }
     async function list() {
       const ticket=++listTicket;
@@ -268,8 +276,9 @@ window.SupportFlowKnowledge = (() => {
       if(!isCurrent()||ticket!==listTicket) return;
       const drafts=data.articles.filter(a=>a.status==='draft'),missing=data.initialImport?.missing || 0,updates=data.simpleUpdates || [],removed=data.removedGuides || [];
       const importLabel=data.initialImport?.total===missing ? 'Importar '+missing+' guias iniciais' : 'Importar '+missing+' guia(s) restante(s)';
+      const reviewButton=admin&&data.articles.length?'<button type="button" class="button secondary" id="start-guide-review">Revisar resultados ('+data.articles.length+')</button>':'';
       content.innerHTML = title + (admin ? `<div class="guide-actions"><p>${data.summary.total} cadastrado(s) · ${data.summary.published} publicado(s) · ${data.summary.drafts} não publicado(s)</p><div class="guide-actions-right">${missing ? '<button class="button secondary" id="import-guides">'+importLabel+'</button>' : ''}${removed.length ? '<button class="button secondary" id="removed-guides">Removidos ('+removed.length+')</button>' : ''}${updates.length ? '<button class="button secondary" id="simplify-guides">Revisar '+updates.length+' guia(s)</button>' : ''}${data.summary.total ? '<button class="button secondary" id="batch-images">Enviar imagens em lote</button>' : ''}${drafts.length ? '<button class="button" id="publish-guides">Publicar '+drafts.length+' guia(s)</button>' : ''}</div></div><p id="import-status" role="status"></p>` : '') +
-        `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Buscar em<select name="scope"><option value="subject">Título e palavras-chave</option><option value="content"${query.scope === 'content' ? ' selected' : ''}>Conteúdo completo</option></select></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Não publicado</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button><button class="button secondary" type="button" id="clear-guide-search">Limpar filtros</button></form>
+        `<form id="guide-search" class="panel guide-filters"><label>Pesquisar<input name="query" type="search" maxlength="300" placeholder="Código, assunto ou mensagem de erro" value="${esc(query.query)}"></label><label>Buscar em<select name="scope"><option value="subject">Título e palavras-chave</option><option value="content"${query.scope === 'content' ? ' selected' : ''}>Conteúdo completo</option></select></label><label>Categoria<select name="category"><option value="">Todas</option>${data.categories.map(c => `<option${c === query.category ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></label>${admin ? `<label>Status<select name="status"><option value="">Todos</option><option value="draft"${query.status === 'draft' ? ' selected' : ''}>Não publicado</option><option value="published"${query.status === 'published' ? ' selected' : ''}>Publicado</option></select></label>` : ''}<button class="button" type="submit">Pesquisar</button><button class="button secondary" type="button" id="clear-guide-search">Limpar filtros</button>${reviewButton}</form>
         <details class="panel guide-guidelines"><summary>Orientações gerais de atendimento</summary><div class="guide-body">${markdown(data.guidelines)}</div></details><p class="guide-count" role="status">${data.articles.length} guia(s) encontrado(s)</p>
         ${admin && data.articles.length ? '<div class="guide-selection"><label><span class="guide-check"><input type="checkbox" id="select-all-guides"></span>Selecionar todos os resultados</label><span id="guide-selection-count" role="status">0 selecionados</span><button type="button" class="button danger" id="remove-selected-guides" disabled hidden>Remover selecionados</button></div>' : ''}
         <section class="guide-list">${data.articles.length ? data.articles.map((a,i) => `<div class="panel guide-list-row">${admin ? '<label class="guide-check guide-row-check"><input type="checkbox" class="guide-select" data-select-guide="'+i+'" aria-label="Selecionar '+esc(a.id)+'"></label>' : ''}<a class="guide-list-item" target="_self" href="${href(a.id)}"><div class="guide-meta"><span>${esc(a.id)}</span><span>${esc(a.category)}</span>${admin ? '<span>'+(a.status === 'published' ? 'Publicado' : 'Não publicado')+'</span>' : ''}</div><h2>${esc(a.title)}</h2><p>${esc(a.keywords)}</p></a></div>`).join('') : '<div class="panel empty"><h2>Nenhum guia encontrado</h2><p>'+(admin ? 'Cadastre os guias iniciais se disponíveis ou ajuste os filtros.' : 'Ajuste os filtros ou aguarde a publicação dos guias pela Administração.')+'</p></div>'}</section>`;
@@ -286,6 +295,7 @@ window.SupportFlowKnowledge = (() => {
         remove.addEventListener('click',()=>{const articles=selected();if(articles.length && articles.length<=50) confirmRemove(articles);});
       }
       if(admin && drafts.length) document.getElementById('publish-guides').addEventListener('click',()=>confirmPublish(drafts));
+      if(admin&&data.articles.length)document.getElementById('start-guide-review').addEventListener('click',()=>{reviewQueue=data.articles.map(article=>({id:article.id,title:article.title}));location.hash=href(reviewQueue[0].id);});
       if(admin && updates.length) document.getElementById('simplify-guides').addEventListener('click',()=>confirmSimplify(updates));
       if(admin && removed.length) document.getElementById('removed-guides').addEventListener('click',()=>showRemoved(removed));
       if(admin && data.summary.total) document.getElementById('batch-images').addEventListener('click',async event=>{
