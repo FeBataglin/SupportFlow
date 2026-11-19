@@ -11,7 +11,7 @@ function include_(name) {
 
 function getBootstrap(options) {
   var user = viewUser_(options);
-  var articles = rows_('Articles').filter(function (a) { return a.status === 'published'; });
+  var articles = guideCatalog_().articles.filter(function (a) { return a.status === 'published'; });
   return {
     version: '1.0.0', user: user,
     dashboard: { publishedArticles: articles.length, categories: rows_('Categories').length },
@@ -22,7 +22,7 @@ function getBootstrap(options) {
 
 function getAdminData() {
   requireUser_('admin');
-  return { users: rows_('Users'), audit: rows_('Audit').slice(-50).reverse(),
+  return { users: rows_('Users'), audit: readRows_('Audit', 50).reverse(),
     storage: 'Google Sheets', aiEnabled: false, version: '1.0.0' };
 }
 

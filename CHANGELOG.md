@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Leitura, acesso e desempenho
+- Texto principal de 16 px e rótulos/metadados a partir de 14 px, com escala em rem e ajustes para telas estreitas.
+- Tema claro com fundo e painéis cinza azulados, reduzindo grandes áreas brancas.
+- Atendimento automático para contas do domínio autorizado sem cadastro; privilégios administrativos e bloqueios explícitos preservados.
+- CacheService para artigos, categorias, vínculos de imagens e índice normalizado da busca, com TTL de 120 segundos, fragmentação e invalidação por revisão após gravações.
+- Leituras diretas para permissões e validações de concorrência; fallback em falhas/expiração do cache e isolamento dos conteúdos por perfil.
+- Dashboard reutiliza o índice; auditoria consulta somente os últimos 50 eventos e leitura de sugestões evita lock desnecessário.
+- Testes de acesso sem cadastro, reaproveitamento e invalidação de cache, fragmentos, Unicode, expiração, falhas e concorrência.
+
 ### Assets
 - Quatro exemplos visuais dos KB-0025 a KB-0028, com dados fictícios, código no arquivo, legendas e prompts. Diagrama PASOE revisado para não sugerir comunicação direta entre banco e navegador.
 - KB-0012 revisada para Basic Auth com credenciais fictícias do ambiente da URL fornecida pelo usuário; nova imagem versionada, manifesto, legenda e prompt atualizados.

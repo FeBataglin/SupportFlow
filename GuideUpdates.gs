@@ -28,7 +28,7 @@ function simplifyGuides(input) {
   }
   var lock=LockService.getScriptLock();lock.waitLock(10000);
   try {
-    var user=requireUser_('admin'),articles=rows_('Articles'),ids=[];
+    var user=requireUser_('admin'),articles=rows_('Articles',true),ids=[];
     var changes=input.guides.map(function (item) {
       if(!item || ids.indexOf(item.id)>=0) throw new Error('Seleção inválida.');
       ids.push(item.id);

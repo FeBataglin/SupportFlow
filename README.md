@@ -10,7 +10,21 @@ Administradores podem usar **Ver como Atendimento** no cabeçalho para conferir 
 
 Busca com códigos/acentos/plurais e relevância por título; indicador de carregamento nas ações de servidor; página **Sugestões e dificuldades** para melhorias, novos guias e roteiros. Sugestões são persistidas na planilha (autor acompanha as próprias; administração gerencia todas). Consulte [Busca, loading e sugestões](docs/Sugestoes_Busca_Loading.md). Logs e respostas de diagnóstico continuam temporários.
 
-Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de usuários e auditoria; estrutura de dados no Sheets.
+Dashboard com contagens reais e metadados de orientações recentes; navegação responsiva; temas claro/escuro; autenticação e autorização no servidor; administração de perfis e bloqueios; auditoria e dados no Sheets. Contas do domínio autorizado acessam o Atendimento sem cadastro prévio.
+
+## Leitura, acesso e desempenho
+
+A interface usa texto principal de 16 px, títulos maiores e rótulos/metadados de pelo menos 14 px na configuração padrão do navegador. A escala em `rem` acompanha a preferência de fonte do navegador. O tema claro usa fundo cinza azulado e painéis suaves, sem grandes superfícies brancas; o tema escuro e a preferência salva continuam disponíveis.
+
+O acesso exige uma conta Google identificada em `ALLOWED_DOMAINS`, sem precisar existir em `Users`. Uma conta não cadastrada recebe somente **Atendimento**, sem criar registros automaticamente. Cadastro explícito continua obrigatório para **Administração**. Uma conta cadastrada como inativa ou com perfil inválido permanece bloqueada; a ausência de cadastro não contorna esses bloqueios. A audiência da implantação continua corporativa (`DOMAIN`), sem acesso anônimo.
+
+`CacheService.gs` mantém dados de artigos, categorias e vínculos de imagens e um índice de busca normalizado no cache do script por até 120 segundos. Pesquisas e dashboard reutilizam o índice; os campos internos de busca e os conteúdos privados não são enviados à listagem. A visibilidade por perfil/publicação é aplicada em toda consulta. Usuários, permissões, sugestões, auditoria e bytes das imagens não são armazenados nesse cache.
+
+Gravações pelo aplicativo efetivam os dados no Sheets e trocam uma revisão durável da tabela, invalidando tanto os dados quanto o índice. Validações de edição e concorrência consultam diretamente a planilha. Fragmentos e gerações exclusivas permitem conteúdos maiores que uma entrada de cache e preenchimentos concorrentes. Cache ausente, expirado, incompleto ou indisponível resulta em leitura da planilha. Edições manuais na planilha podem demorar até 120 segundos para aparecer nas consultas; permissões e bloqueios continuam sendo lidos diretamente.
+
+A Administração lê somente os últimos 50 registros de auditoria; a consulta de sugestões não disputa o lock de escrita quando a tabela está pronta. Não é necessário reexecutar a inicialização nem adicionar propriedades para ativar o cache: sincronize também `CacheService.gs` com `clasp push` e recarregue `/dev` (ou atualize a versão da implantação `/exec`). As melhorias reduzem leituras e processamento repetidos; o tempo real depende do ambiente Google e deve ser medido na implantação.
+
+Referências de implementação: [Cache do Apps Script](https://developers.google.com/apps-script/reference/cache/cache) e [boas práticas de desempenho](https://developers.google.com/apps-script/guides/support/best-practices).
 
 A Base de conhecimento permite importar, pesquisar, ler, editar e publicar os 35 guias do catálogo, com envio de imagens de exemplo. O Analisador de logs funciona localmente no navegador, sem IA, upload ou histórico. O Diagnóstico assistido oferece 18 entradas por cenário, resultados informados pelo atendimento e resumo para copiar, sem IA ou persistência de respostas. Assistente Gemini e histórico não estão disponíveis. Consulte [Analisador de logs](docs/Analisador_Logs.md) e [Diagnóstico assistido](docs/Diagnostico_Assistido.md).
 
@@ -110,6 +124,7 @@ Fonte adotada: `docs/Guias_Atendimento_Fonte.md`, cópia do Markdown fornecido. 
 | Código.js | Entrada web, bootstrap e operações administrativas |
 | Auth.gs | Identidade, domínios e perfis |
 | DataService.gs | Persistência, inicialização e auditoria |
+| CacheService.gs | Cache fragmentado, expiração e invalidação por revisão da tabela |
 | Knowledge.gs / GuideSeeds.gs | Consulta, edição, importação e conteúdo inicial dos guias |
 | GuideImages.gs | Envio e consulta autorizada de imagens no Drive |
 | GuideUpdates.gs | Atualização confirmada das edições originais dos KB-0025 a KB-0028 |
@@ -133,13 +148,13 @@ Fonte adotada: `docs/Guias_Atendimento_Fonte.md`, cópia do Markdown fornecido. 
 3. Para sincronizar, use CLASP instalado e autenticado: confira o destino em `.clasp.json` e execute `clasp status`, depois `clasp push` para o projeto de desenvolvimento. Nenhum push ou deploy foi executado nesta entrega. `.claspignore` envia somente os arquivos da aplicação.
 4. Execute **`setupSupportFlow` pelo editor Apps Script**, no arquivo `DataService.gs`, e autorize os escopos de identidade e planilhas. O executor deve coincidir com `INITIAL_ADMIN_EMAIL` e pertencer a um domínio permitido. Sincronize os arquivos locais antes de procurar a função no editor remoto.
 5. A inicialização salva `SPREADSHEET_ID`, cria tabelas ausentes e cadastra o primeiro admin somente quando `Users` está vazia. Reexecutar preserva dados. Cabeçalhos incompatíveis geram erro sem substituição. Uma falha parcial pode ser corrigida e a função repetida.
-6. Após inicializar, remova `INITIAL_ADMIN_EMAIL` até precisar de manutenção pelo editor. Cadastre usuários pela Administração; não existe acesso automático para todo o domínio.
+6. Após inicializar, remova `INITIAL_ADMIN_EMAIL` até precisar de manutenção pelo editor. Contas do domínio autorizado acessam automaticamente como Atendimento. Use a Administração para cadastrar administradores ou bloquear contas; o cadastro de atendentes é opcional.
 
 Domínio, responsáveis e políticas corporativas são decisões pendentes. Nenhum domínio TOTVS foi presumido no código. Não coloque segredos em arquivos versionados.
 
 ## Implantação de desenvolvimento e identidade
 
-O `appsscript.json` local mantém `webapp.executeAs: USER_DEPLOYING` e `webapp.access: DOMAIN`. Assim, `clasp push` preserva a configuração de aplicativo web no código atual. `DOMAIN` refere-se ao domínio Workspace de quem implanta; a aplicação ainda exige os domínios configurados e um cadastro ativo. Após sincronizar, use **Implantar → Testar implantações → engrenagem → Aplicativo da Web** e salve o link `/dev`. Nos próximos pushes, recarregue esse link, sem atualizar a implantação versionada `/exec`. Se a configuração aprovada de identidade mudar pelo editor, atualize também o manifesto local para não substituí-la no próximo push.
+O `appsscript.json` local mantém `webapp.executeAs: USER_DEPLOYING` e `webapp.access: DOMAIN`. Assim, `clasp push` preserva a configuração de aplicativo web no código atual. `DOMAIN` refere-se ao domínio Workspace de quem implanta; a aplicação exige os domínios configurados e respeita bloqueios explícitos, sem exigir cadastro prévio de atendentes. Após sincronizar, use **Implantar → Testar implantações → engrenagem → Aplicativo da Web** e salve o link `/dev`. Nos próximos pushes, recarregue esse link, sem atualizar a implantação versionada `/exec`. Se a configuração aprovada de identidade mudar pelo editor, atualize também o manifesto local para não substituí-la no próximo push.
 
 No editor, use **Implantar → Testar implantações → Aplicativo da Web** para testes por editores. A URL `/dev` exige acesso de editor; não conceda edição aos atendentes somente para teste. Para contas sem edição, use uma implantação separada de desenvolvimento com audiência corporativa restrita, após definir a configuração de identidade aprovada.
 
@@ -153,7 +168,7 @@ Referências oficiais consultadas:
 - [Session e disponibilidade do e-mail](https://developers.google.com/apps-script/reference/base/session)
 - [Quotas do Apps Script](https://developers.google.com/apps-script/guides/services/quotas)
 
-As quotas dependem da conta e podem mudar. Leituras em lote e gravações curtas sob ScriptLock atendem à estrutura inicial. Leituras completas de tabelas devem ser revistas antes de um histórico de grande volume.
+As quotas dependem da conta e podem mudar. O cache reduz consultas repetidas e as gravações usam ScriptLock. Consultas de sugestões ainda leem a tabela para aplicar autoria e ordenação; bases de grande volume podem exigir paginação na origem.
 
 ## Persistência
 
@@ -179,7 +194,8 @@ Checklist manual no ambiente Apps Script:
 
 - Inicializar duas vezes e confirmar preservação dos dados.
 - Entrar com administrador e atendimento; conferir e-mails e menus distintos.
-- Conta não cadastrada, inativa, domínio não autorizado e identidade vazia: bloquear acesso.
+- Conta não cadastrada do domínio autorizado: acessar Atendimento, consultar somente publicados e enviar/acompanhar sugestões próprias, sem criar usuário.
+- Conta inativa, domínio não autorizado e identidade vazia: bloquear acesso; conta sem cadastro não pode acessar endpoints administrativos.
 - Atendimento chamando endpoint administrativo diretamente: rejeitar no servidor.
 - Alterar perfil, desativar conta e tentar remover o último admin: validar proteção.
 - Conferir dashboard vazio, falha de conexão e botão de nova tentativa.
@@ -193,6 +209,8 @@ Checklist manual no ambiente Apps Script:
 - Navegar nos módulos restantes e confirmar indicação de recurso planejado.
 - Conferir temas claro/escuro, persistência após recarregar, teclado e larguras de 360/768/1440 px.
 - Validar menu móvel e tabelas com rolagem horizontal.
+- Repetir buscas e conferir reutilização do índice; editar/publicar/remover/restaurar e confirmar atualização das consultas sem esperar o TTL.
+- Conferir consultas após expiração e indisponibilidade do cache; validar a versão atual ao editar mesmo com leitura anterior no cache.
 
 Não houve implantação remota nem validação visual em navegador nesta entrega. A ativação depende da configuração corporativa acima.
 

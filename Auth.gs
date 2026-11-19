@@ -23,8 +23,13 @@ function requireUser_(role) {
     throw new Error('Configuração inicial pendente: defina ALLOWED_DOMAINS nas Propriedades do script e execute setupSupportFlow pelo editor Apps Script.');
   }
   if (!allowedDomain_(email)) throw new Error('Acesso restrito: o domínio da conta conectada (' + email.split('@')[1] + ') não está autorizado em ALLOWED_DOMAINS. Verifique a conta Google utilizada ou solicite a configuração ao administrador.');
-  var user = rows_('Users').filter(function (u) { return u.email === email && u.active === true; })[0];
-  if (!user || ['admin', 'support'].indexOf(user.role) < 0) throw new Error('Sua conta não possui acesso ativo ao SupportFlow. Solicite o cadastro ao administrador.');
+  // Sem cadastro, a conta do domínio recebe somente Atendimento. Cadastros
+  // existentes continuam definindo privilégios e bloqueios, sem cache de acesso.
+  var user = rows_('Users').filter(function (u) { return normalizeEmail_(u.email) === email; })[0];
+  if (user && (user.active !== true || ['admin', 'support'].indexOf(user.role) < 0)) {
+    throw new Error('Sua conta não possui acesso ativo ao SupportFlow. Solicite a revisão ao administrador.');
+  }
+  if (!user) user = { email: email, role: 'support' };
   if (role && user.role !== role) throw new Error('Esta operação exige perfil de administração.');
   return { email: email, role: user.role };
 }

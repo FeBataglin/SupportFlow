@@ -66,7 +66,7 @@ function uploadGuideImage(input) {
     var user = requireUser_('admin');
     var guide = getGuide(input.guideId);
     guideImagesTable_();
-    if (rows_('GuideImages').filter(function (a) { return a.guideId === guide.id; }).length >= 50) {
+    if (rows_('GuideImages', true).filter(function (a) { return a.guideId === guide.id; }).length >= 50) {
       throw new Error('Este guia já possui 50 arquivos enviados. Solicite manutenção ao responsável técnico.');
     }
     var id = Utilities.getUuid();
@@ -84,7 +84,7 @@ function validateGuideImages_(guideId, markdown) {
   var ids = guideImageIds_(markdown);
   if (ids.length > 12) throw new Error('Use no máximo 12 imagens por guia.');
   if (!ids.length) return;
-  var images = database_().getSheetByName('GuideImages') ? rows_('GuideImages') : [];
+  var images = database_().getSheetByName('GuideImages') ? rows_('GuideImages', true) : [];
   ids.forEach(function (id) {
     if (!images.some(function (image) { return image.id === id && image.guideId === guideId; })) {
       throw new Error('Imagem não encontrada ou pertencente a outro guia. Use Enviar e inserir imagem.');

@@ -82,7 +82,14 @@ test('revisão de ambientes separados atualiza originais publicados com imagens 
 
 function fixture() {
   const properties = {ALLOWED_DOMAINS:'example.com', INITIAL_ADMIN_EMAIL:'admin@example.com'};
-  const tables = {};
+  const tables = {}, reads = {}, cacheEntries = new Map();
+  let cacheTime = 0, cacheFailure = false, cacheWriteHook = null;
+  const cache = {
+    get(key) { if(cacheFailure) throw new Error('Cache indisponível');const entry=cacheEntries.get(key);return entry && entry.expires>cacheTime ? entry.value : null; },
+    getAll(keys) { return Object.fromEntries(keys.map(key=>[key,this.get(key)]).filter(([,value])=>value!==null)); },
+    put(key,value,ttl) { if(cacheFailure) throw new Error('Cache indisponível');assert.ok(Buffer.byteLength(value,'utf8')<=100*1024);assert.equal(Buffer.from(value,'utf8').toString('utf8'),value);assert.ok(key.length<=250);cacheEntries.set(key,{value,expires:cacheTime+ttl}); },
+    putAll(entries,ttl) { for(const [key,value] of Object.entries(entries)) this.put(key,value,ttl);if(cacheWriteHook){const hook=cacheWriteHook;cacheWriteHook=null;hook();} }
+  };
   const driveFiles = {}, driveFolders = {};
   let email = 'admin@example.com', uid = 0, locked = false, creates = 0;
   function blob(bytes,mimeType,name) {
@@ -97,7 +104,7 @@ function fixture() {
         cells, getLastRow: () => cells.length, setFrozenRows: () => {},
         getRange(row,col,count,width) {
           return {
-            getValues: () => Array.from({length:count},(_,r) => Array.from({length:width},(_,c) => cells[row+r-1]?.[col+c-1] ?? '')),
+            getValues: () => {reads[name]=(reads[name]||0)+1;return Array.from({length:count},(_,r) => Array.from({length:width},(_,c) => cells[row+r-1]?.[col+c-1] ?? ''));},
             setValues(values) { values.forEach((valuesRow,r) => { cells[row+r-1] ||= []; valuesRow.forEach((v,c) => cells[row+r-1][col+c-1] = v); }); }
           };
         }
@@ -108,7 +115,8 @@ function fixture() {
   const context = vm.createContext({
     Session:{getActiveUser:() => ({getEmail:() => email})},
     PropertiesService:{getScriptProperties:() => ({getProperty:key => properties[key] || null, setProperty:(key,value) => {properties[key]=value;}})},
-    SpreadsheetApp:{openById:() => db, create:() => {creates++; return db;}},
+    SpreadsheetApp:{openById:() => db, create:() => {creates++; return db;},flush:()=>{}},
+    CacheService:{getScriptCache:()=>{if(cacheFailure) throw new Error('Cache indisponível');return cache;}},
     LockService:{getScriptLock:() => ({waitLock:() => {assert.equal(locked,false);locked=true;},releaseLock:() => {locked=false;}})},
     Utilities:{getUuid:() => 'id-'+ ++uid,
       base64Decode:text=>Array.from(Buffer.from(text,'base64')),
@@ -128,8 +136,10 @@ function fixture() {
       getFileById:id=>{if(!driveFiles[id]) throw new Error('Arquivo indisponível');return driveFiles[id];}
     }, Date, console
   });
-  for(const file of ['Auth.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','GuideUpdates.gs','Knowledge.gs','Suggestions.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
-  return {c:context,properties,tables,driveFiles,driveFolders,setEmail:value => {email=value;},get creates(){return creates;},get locked(){return locked;}};
+  for(const file of ['Auth.gs','CacheService.gs','DataService.gs','GuideSeeds.gs','GuideImages.gs','GuideUpdates.gs','Knowledge.gs','Suggestions.gs','Código.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
+  return {c:context,properties,tables,reads,cacheEntries,cache,driveFiles,driveFolders,
+    advanceCache:seconds=>{cacheTime+=seconds;},failCache:value=>{cacheFailure=value;},onCacheWrite:hook=>{cacheWriteHook=hook;},
+    setEmail:value => {email=value;},get creates(){return creates;},get locked(){return locked;}};
 }
 
 test('nega acesso sem configuração, domínio aprovado ou identidade',() => {
@@ -184,7 +194,8 @@ test('atendimento não pode ler administração nem alterar usuários',() => {
   f.setEmail('support@example.com');assert.equal(f.c.getBootstrap().user.role,'support');
   assert.throws(() => f.c.getAdminData(),/administração/);
   assert.throws(() => f.c.saveUser({email:'new@example.com',role:'admin',active:true}),/administração/);
-  f.setEmail('unknown@example.com');assert.throws(() => f.c.getBootstrap(),/acesso ativo/);
+  f.setEmail('unknown@example.com');assert.equal(f.c.getBootstrap().user.role,'support');
+  assert.throws(() => f.c.getAdminData(),/administração/);
 });
 test('valida cadastro, atualiza sem duplicar e bloqueia conta inativa',() => {
   const f=fixture();f.c.setupSupportFlow_();
@@ -647,4 +658,86 @@ test('Atendimento não pode remover guias em lote diretamente',()=>{
   f.c.saveUser({email:'support@example.com',role:'support',active:true});f.setEmail('support@example.com');
   assert.throws(()=>f.c.deleteGuides({confirm:true,guides:selected}),/administração/);
   f.setEmail('admin@example.com');assert.equal(f.c.listGuides({}).removedGuides.length,0);
+});
+
+test('conta do domínio acessa sem cadastro, sem criar usuário e sem receber privilégios administrativos',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const guide=f.c.getGuide('KB-0001');f.c.publishGuides({confirm:true,guides:[guide]});
+  f.setEmail('novo@example.com');
+  assert.equal(f.c.getBootstrap().user.role,'support');
+  assert.equal(f.c.getGuide('KB-0001').status,'published');
+  assert.throws(()=>f.c.getGuide('KB-0002'),/não encontrado/);
+  assert.equal(f.c.listGuides().articles.length,1);
+  assert.equal(f.c.listGuides({preview:false}).initialImport,null);
+  assert.equal(f.c.rows_('Users').length,1);
+  for(const action of [()=>f.c.getAdminData(),()=>f.c.saveUser({}),()=>f.c.importInitialGuides(),()=>f.c.saveGuide({}),()=>f.c.uploadGuideImage({})]) {
+    assert.throws(action,/administração/);
+  }
+  f.setEmail('admin@example.com');f.c.saveUser({email:'novo@example.com',role:'support',active:false});
+  f.setEmail('novo@example.com');assert.throws(()=>f.c.getBootstrap(),/acesso ativo/);
+});
+
+test('buscas aquecidas e dashboard reutilizam o índice sem reler artigos ou normalizar todos os guias',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const first=f.c.listGuides({query:'PROPATH'}),reads=f.reads.Articles;
+  let normalizations=0;const normalize=f.c.searchTerms_;
+  f.c.searchTerms_=text=>{normalizations++;return normalize(text);};
+  const second=f.c.listGuides({query:'PROPATH'});
+  f.c.getBootstrap();
+  assert.equal(JSON.stringify(first),JSON.stringify(second));
+  assert.equal(f.reads.Articles,reads);assert.equal(normalizations,1);
+  assert.ok(f.cacheEntries.size>1);
+  // O índice compartilhado contém rascunhos; a resposta de Atendimento não.
+  f.setEmail('novo@example.com');assert.equal(f.c.listGuides({query:'PROPATH'}).articles.length,0);
+  assert.equal(f.reads.Articles,reads);
+});
+
+test('cache respeita expiração e se recupera de fragmento ausente, JSON inválido e falha do serviço',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const expected=JSON.stringify(f.c.listGuides()),reads=f.reads.Articles;
+  f.advanceCache(121);
+  assert.equal(JSON.stringify(f.c.listGuides()),expected);assert.ok(f.reads.Articles>reads);
+  const key=f.c.tableCacheKey_('Articles','catalog');
+  let manifest=JSON.parse(f.cache.get(key));
+  f.cacheEntries.delete(key+':'+manifest.generation+':0');
+  let before=f.reads.Articles;assert.equal(JSON.stringify(f.c.listGuides()),expected);assert.ok(f.reads.Articles>before);
+  manifest=JSON.parse(f.cache.get(key));f.cache.put(key+':'+manifest.generation+':0','JSON inválido',120);
+  before=f.reads.Articles;assert.equal(JSON.stringify(f.c.listGuides()),expected);assert.ok(f.reads.Articles>before);
+  f.failCache(true);assert.equal(JSON.stringify(f.c.listGuides()),expected);
+  const guide=f.c.getGuide('KB-0001');f.c.saveGuide({...guide,title:'Editado sem cache'});
+  f.failCache(false);assert.equal(f.c.getGuide('KB-0001').title,'Editado sem cache');
+  assert.equal(f.c.listGuides({query:'Editado sem cache'}).articles[0].id,'KB-0001');
+});
+
+test('fragmentos comportam Unicode e bases maiores que 100 KB sem misturar preenchimentos concorrentes',()=>{
+  const f=fixture();f.c.setupSupportFlow();
+  const large={text:'a'.repeat(19991)+'😀'+'ação 😀 '.repeat(20000)};let loads=0;
+  const load=()=>{loads++;return large;};
+  f.c.cachedTableValue_('Articles','unicode',load);
+  assert.equal(f.c.cachedTableValue_('Articles','unicode',load).text,large.text);assert.equal(loads,1);
+  let current='antigo',calls=0;
+  f.onCacheWrite(()=>{current='novo';f.c.invalidateTableCache_('Articles');});
+  const raceLoad=()=>{calls++;return {text:current};};
+  assert.equal(f.c.cachedTableValue_('Articles','race',raceLoad).text,'antigo');
+  assert.equal(f.c.cachedTableValue_('Articles','race',raceLoad).text,'novo');assert.equal(calls,2);
+});
+
+test('edição consulta versão atual na planilha mesmo quando existe cópia antiga no cache',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  const stale=f.c.getGuide('KB-0001');
+  // Simula manutenção direta na planilha, fora dos endpoints do aplicativo.
+  f.tables.Articles.cells[1][6]='2099-01-01T00:00:00Z';
+  assert.throws(()=>f.c.saveGuide({...stale,title:'Não deve sobrescrever'}),/outra pessoa/);
+  assert.equal(f.tables.Articles.cells[1][1],stale.title);
+});
+
+test('permissões e bloqueios têm efeito imediato mesmo com cache de conteúdo aquecido',()=>{
+  const f=fixture();f.c.setupSupportFlow();f.c.importInitialGuides();
+  f.c.saveUser({email:'outro@example.com',role:'admin',active:true});
+  f.setEmail('outro@example.com');f.c.listGuides();
+  f.setEmail('admin@example.com');f.c.saveUser({email:'outro@example.com',role:'support',active:true});
+  f.setEmail('outro@example.com');assert.throws(()=>f.c.getAdminData(),/administração/);
+  assert.equal(f.c.listGuides().articles.length,0);
+  f.setEmail('admin@example.com');f.c.saveUser({email:'outro@example.com',role:'support',active:false});
+  f.setEmail('outro@example.com');assert.throws(()=>f.c.listGuides(),/acesso ativo/);
 });

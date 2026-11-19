@@ -27,10 +27,16 @@ function sheet_(name) {
   return sheet;
 }
 
-function rows_(name) {
+function rows_(name, fresh) {
+  return cachedTableValue_(name, 'rows', function () { return readRows_(name); }, fresh);
+}
+
+function readRows_(name, limit) {
   var sheet = sheet_(name);
-  if (sheet.getLastRow() < 2) return [];
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, SCHEMA_[name].length).getValues()
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  var start = limit ? Math.max(2, lastRow - limit + 1) : 2;
+  return sheet.getRange(start, 1, lastRow - start + 1, SCHEMA_[name].length).getValues()
     .filter(function (row) { return row[0] !== ''; })
     .map(function (row) {
       var item = {};
@@ -48,7 +54,13 @@ function writeRow_(name, record, rowNumber) {
     // Evita fórmulas em campos textuais gravados na planilha.
     return typeof value === 'string' && /^[=+@\-]/.test(value) ? "'" + value : value;
   });
-  sheet.getRange(rowNumber || sheet.getLastRow() + 1, 1, 1, values.length).setValues([values]);
+  try {
+    sheet.getRange(rowNumber || sheet.getLastRow() + 1, 1, 1, values.length).setValues([values]);
+  } finally {
+    // Publica a nova revisão somente depois de efetivar as gravações no Sheets.
+    // Também invalida se uma escrita falhar após alterar parte dos dados.
+    try { SpreadsheetApp.flush(); } finally { invalidateTableCache_(name); }
+  }
 }
 
 function rowNumberForId_(name, id) {

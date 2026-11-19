@@ -5,8 +5,13 @@ function suggestionsTable_(){
   return sheet_('Suggestions');
 }
 function listSuggestions(options){
-  var user=viewUser_(options),lock=LockService.getScriptLock();lock.waitLock(10000);
-  try{suggestionsTable_();}finally{lock.releaseLock();}
+  var user=viewUser_(options);
+  // Consultas não disputam o lock de escrita quando a tabela já existe.
+  var table=database_().getSheetByName('Suggestions');
+  if(!table||!table.getLastRow()){
+    var lock=LockService.getScriptLock();lock.waitLock(10000);
+    try{suggestionsTable_();}finally{lock.releaseLock();}
+  }
   var all=rows_('Suggestions').filter(function(item){return user.role==='admin'||item.author===user.email;});
   return {total:all.length,items:all.sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt));}).slice(0,200)};
 }

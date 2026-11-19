@@ -20,6 +20,28 @@ function searchTerms_(text) {
   return searchText_(text).split(/[^a-z0-9]+/).filter(function (term) {return term && stop.indexOf(term)<0;}).map(function (term) {return aliases[term]||term;});
 }
 
+/** Índice compartilhado no servidor; a visibilidade é aplicada em cada consulta. */
+function guideCatalog_() {
+  return cachedTableValue_('Articles', 'catalog', function () {
+    var stored = readRows_('Articles'), existing = {};
+    stored.forEach(function (article) { existing[article.id] = true; });
+    var seeds = initialGuides_();
+    return {
+      articles: stored.map(function (article) {
+        var guide = guideData_(article);
+        return { id: guide.id, title: guide.title, category: guide.category, status: guide.status,
+          keywords: guide.keywords, updatedAt: guide.updatedAt,
+          searchId: searchTerms_(guide.id).join(' '),
+          searchFields: [guide.title, guide.keywords, guide.category, guide.markdown].map(function (value) {
+            return searchTerms_(value).join(' ');
+          }) };
+      }),
+      initialImport: { total: seeds.length, missing: seeds.filter(function (seed) { return !existing[seed.id]; }).length },
+      simpleUpdates: availableSimpleGuideUpdates_(stored), guidelines: guideGuidelines_()
+    };
+  });
+}
+
 function listGuides(options) {
   var user = viewUser_(options);
   options = options || {};
@@ -27,29 +49,24 @@ function listGuides(options) {
   var code=/^(?:kb[\s_-]*0*(\d{1,4})|(0\d{3}))$/i.exec(query);
   var exactCode=code?'KB-'+('0000'+Number(code[1]||code[2])).slice(-4):'';
   var terms=searchTerms_(query.replace(/\bkb[\s_-]*0*(\d{1,4})\b/gi,function(_,number){return 'KB-'+('0000'+Number(number)).slice(-4);}));
-  var stored = rows_('Articles');
-  var articles = stored.filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); }).map(guideData_);
+  var catalog = guideCatalog_(), stored = catalog.articles;
+  var articles = stored.filter(function (a) { return a.status !== 'deleted' && (user.role === 'admin' || a.status === 'published'); });
   var summary = { total: articles.length, drafts: articles.filter(function (a) { return a.status === 'draft'; }).length,
     published: articles.filter(function (a) { return a.status === 'published'; }).length };
-  var initialImport = null;
-  if (user.role === 'admin') {
-    var seeds = initialGuides_();
-    initialImport = { total: seeds.length, missing: seeds.filter(function (seed) {
-      return !stored.some(function (a) { return a.id === seed.id; });
-    }).length };
-  }
+  var initialImport = user.role === 'admin' ? catalog.initialImport : null;
   var categories = articles.map(function (a) { return a.category; }).filter(function (c, i, all) { return c && all.indexOf(c) === i; }).sort();
   articles = articles.filter(function (a) {
     if (options.category && a.category !== options.category) return false;
     if (options.status && a.status !== options.status) return false;
     if(exactCode){a.searchScore=1000;return a.id===exactCode;}
-    var fields=[a.title,a.keywords,a.category,a.markdown].map(function (value) {return searchTerms_(value).join(' ');});
-    var haystack=(options.scope==='content'?fields.join(' '):fields.slice(0,2).join(' '))+' '+searchTerms_(a.id).join(' ');
+    if (!terms.length) return true;
+    var fields=a.searchFields;
+    var haystack=(options.scope==='content'?fields.join(' '):fields.slice(0,2).join(' '))+' '+a.searchId;
     a.searchScore=terms.reduce(function (score,term) {return score+(fields[0].indexOf(term)>=0?12:fields[1].indexOf(term)>=0?7:fields[2].indexOf(term)>=0?3:1);},0);
     return terms.every(function (term) {return haystack.indexOf(term)>=0;});
   });
-  return { categories: categories, guidelines: guideGuidelines_(), summary: summary, initialImport: initialImport,
-    simpleUpdates: user.role === 'admin' ? availableSimpleGuideUpdates_(stored) : [],
+  return { categories: categories, guidelines: catalog.guidelines, summary: summary, initialImport: initialImport,
+    simpleUpdates: user.role === 'admin' ? catalog.simpleUpdates : [],
     removedGuides: user.role === 'admin' ? stored.filter(function (a) {return a.status === 'deleted';})
       .map(function (a) {return {id:a.id,title:a.title,category:a.category,updatedAt:a.updatedAt};}) : [],
     articles: articles.sort(function (a,b) { return (b.searchScore||0)-(a.searchScore||0)||a.id.localeCompare(b.id); }).map(function (a) {
@@ -65,7 +82,7 @@ function publishGuides(input) {
   }
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
-    var user = requireUser_('admin'), stored = rows_('Articles'), ids = [];
+    var user = requireUser_('admin'), stored = rows_('Articles', true), ids = [];
     var selected = input.guides.map(function (item) {
       if (!item || typeof item.id !== 'string' || ids.indexOf(item.id) >= 0) throw new Error('Seleção de guias inválida.');
       ids.push(item.id);
@@ -109,7 +126,7 @@ function saveGuide(input) {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     var user = requireUser_('admin');
-    var article = rows_('Articles').filter(function (a) { return a.id === input.id; })[0];
+    var article = rows_('Articles', true).filter(function (a) { return a.id === input.id; })[0];
     if (!article || article.status === 'deleted') throw new Error('Guia não encontrado ou removido.');
     if (article.updatedAt !== input.updatedAt) throw new Error('Este guia foi alterado por outra pessoa. Recarregue antes de salvar.');
     validateGuideImages_(article.id, input.markdown);
@@ -128,7 +145,7 @@ function saveGuide(input) {
 }
 
 function ensureGuideCategory_(name, now) {
-  if (!rows_('Categories').some(function (c) { return searchText_(c.name) === searchText_(name); })) {
+  if (!rows_('Categories', true).some(function (c) { return searchText_(c.name) === searchText_(name); })) {
     writeRow_('Categories', { id: Utilities.getUuid(), name: name, createdAt: now, updatedAt: now });
   }
 }
@@ -142,7 +159,7 @@ function deleteGuide(input) {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     var user = requireUser_('admin');
-    var article = rows_('Articles').filter(function (a) { return a.id === input.id; })[0];
+    var article = rows_('Articles', true).filter(function (a) { return a.id === input.id; })[0];
     if (!article || article.status === 'deleted') throw new Error('Guia não encontrado ou já removido.');
     if (article.updatedAt !== input.updatedAt) throw new Error('Este guia foi alterado por outra pessoa. Recarregue antes de remover.');
     audit_(user.email, 'GUIDE_DELETE_REQUEST', article.id + ' / ' + article.title);
@@ -161,7 +178,7 @@ function deleteGuides(input) {
   }
   var lock=LockService.getScriptLock();lock.waitLock(10000);
   try {
-    var user=requireUser_('admin'),stored=rows_('Articles'),ids=[];
+    var user=requireUser_('admin'),stored=rows_('Articles',true),ids=[];
     var selected=input.guides.map(function (item) {
       if(!item || typeof item.id!=='string' || ids.indexOf(item.id)>=0) throw new Error('Seleção inválida.');
       ids.push(item.id);
@@ -188,7 +205,7 @@ function restoreGuides(input) {
       typeof input.useSimplified!=='boolean') throw new Error('Confirme de 1 a 50 guias para restaurar.');
   var lock=LockService.getScriptLock();lock.waitLock(10000);
   try {
-    var user=requireUser_('admin'),stored=rows_('Articles'),ids=[],simplified=0;
+    var user=requireUser_('admin'),stored=rows_('Articles',true),ids=[],simplified=0;
     var changes=input.guides.map(function (item) {
       if(!item || typeof item.id!=='string' || ids.indexOf(item.id)>=0) throw new Error('Seleção inválida.');
       ids.push(item.id);
@@ -223,7 +240,7 @@ function importInitialGuides() {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     var user = requireUser_('admin');
-    var existing = rows_('Articles');
+    var existing = rows_('Articles', true);
     var result = { imported: 0, skipped: [], conflicts: [] };
     var now = new Date().toISOString();
     audit_(user.email, 'GUIDES_IMPORT_REQUEST', 'Catálogo: ' + seeds.length + ' guias / revisão 1.0');

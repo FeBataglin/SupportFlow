@@ -2,6 +2,7 @@
 !Código.js
 !Auth.gs
 !DataService.gs
+!CacheService.gs
 !Knowledge.gs
 !GuideImages.gs
 !GuideUpdates.gs
